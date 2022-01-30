@@ -1,0 +1,62 @@
+From 45055532662c8ad38b085459cf4aa67cd7b87c6f Mon Sep 17 00:00:00 2001
+From: Eric Prestat <eric.prestat@gmail.com>
+Date: Sun, 30 Jan 2022 19:51:37 +0000
+Subject: [PATCH] Allow longer path for HDF5 installation
+
+---
+ Source/EMsoftLib/local.f90.in | 17 +++++++++++------
+ 1 file changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/Source/EMsoftLib/local.f90.in b/Source/EMsoftLib/local.f90.in
+index 07da5b0..0a879cd 100644
+--- a/Source/EMsoftLib/local.f90.in
++++ b/Source/EMsoftLib/local.f90.in
+@@ -309,10 +309,13 @@ IMPLICIT NONE
+ 
+ character(fnlen) :: h5copypath
+ 
+-if (trim(EMsoft_getEMsoftplatform()).eq.SC_Windows) then
+-  h5copypath = "@HDF5_INSTALL@"//SC_h5copy//".exe"
++! Split the line to allow longer path
++if (trim(EMsoft_getEMsoftplatform()).eq.'Windows') then
++  h5copypath = &
++  "@HDF5_INSTALL@"//SC_h5copy//".exe"
+ else
+-  h5copypath = "@HDF5_INSTALL@"//SC_h5copy
++  h5copypath = &
++  "@HDF5_INSTALL@"//SC_h5copy
+ end if
+ 
+ end function EMsoft_geth5copypath
+@@ -490,7 +493,7 @@ IMPLICIT NONE
+ 
+ character(1)  :: EMsoftnativedelimiter
+ 
+-if (trim(EMsoft_getEMsoftplatform()).eq.SC_Windows) then
++if (trim(EMsoft_getEMsoftplatform()).eq.'Windows') then
+   EMsoftnativedelimiter = '\'                ! '
+ else
+   EMsoftnativedelimiter = '/'
+@@ -1109,7 +1112,7 @@ character(9)      :: Home
+ character(2)      :: HomeDrive
+ 
+ HomeDrive = ''
+-if (trim(EMsoft_getEMsoftplatform()).eq.SC_Windows) then
++if (trim(EMsoft_getEMsoftplatform()).eq.'Windows') then
+   Home = 'HOMEPATH'
+   call getenv("HOMEDRIVE",HomeDrive)
+ else
+@@ -1380,7 +1383,9 @@ if (present(EMconfig)) then
+       EMconfig%Release = 'No'
+     end if
+   ! other configuration parameters that may be needed in various program but are not in the EMsoftConfig.json file
+-   EMconfig%h5copypath = "@HDF5_INSTALL@"//SC_h5copy
++  ! split the line to allow longer path
++   EMconfig%h5copypath = &
++   "@HDF5_INSTALL@"//SC_h5copy
+    EMconfig%EMsoftplatform = "@CMAKE_SYSTEM_NAME@"
+    EMconfig%EMsofttestpath = trim(EMsoft_getEMsofttestpath())
+    EMconfig%EMsoftTestingPath = "@EMsoft_TESTING_DIR@"
+-- 
+2.30.2
+
