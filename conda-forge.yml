@@ -1,4 +1,4 @@
-build_with_mambabuild: false
+build_with_mambabuild: true
 azure:
   # toggle for storing the conda build_artifacts directory (including the
   # built packages) as an Azure pipeline artifact that can be downloaded
