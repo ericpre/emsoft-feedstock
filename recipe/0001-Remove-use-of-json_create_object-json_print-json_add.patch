@@ -1,0 +1,1441 @@
+From 615fa21ee47d0b16e25d75565bc4dff0b1e0c7d4 Mon Sep 17 00:00:00 2001
+From: Eric Prestat <eric.prestat@gmail.com>
+Date: Wed, 26 Jan 2022 16:55:09 +0000
+Subject: [PATCH] Remove use of json_create_object, json_print, json_add,
+ json_destroy, json_failed, json_initialize, json_print_error_message,
+ json_parse, json_info, json_get and json_get_child to support recent version
+ of json-fortran (5.0 and newer)
+
+---
+ Source/EMsoftLib/JSONsupport.f90 | 443 +++++++++++++++++--------------
+ Source/EMsoftLib/local.f90.in    |  10 +-
+ 2 files changed, 247 insertions(+), 206 deletions(-)
+
+diff --git a/Source/EMsoftLib/JSONsupport.f90 b/Source/EMsoftLib/JSONsupport.f90
+index 353087c..cfe8c51 100644
+--- a/Source/EMsoftLib/JSONsupport.f90
++++ b/Source/EMsoftLib/JSONsupport.f90
+@@ -139,11 +139,12 @@ recursive subroutine JSON_failtest(error_cnt)
+ 
+ IMPLICIT NONE
+ 
++type(json_file)                         :: json
+ integer(kind=irg),INTENT(INOUT)         :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+-if (json_failed().eqv..TRUE.) then
+-  call json_print_error_message(error_unit)
++if (json%failed()) then
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ end if
+ 
+@@ -171,6 +172,7 @@ recursive subroutine JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cn
+ IMPLICIT NONE
+ 
+ type(json_value),INTENT(INOUT),pointer                :: inp
++type(json_core)                                       :: core
+ !f2py intent(in,out) ::  inp
+ integer(kind=irg),INTENT(IN)                          :: n_int
+ integer(kind=irg),INTENT(IN)                          :: io_int(n_int)
+@@ -183,7 +185,7 @@ character(fnlen)                                      :: dataset
+ 
+ do i=1,n_int
+   dataset = intlist(i)
+-  call json_add(inp, dataset, io_int(i)); call JSON_failtest(error_cnt)
++  call core%add(inp, dataset, io_int(i)); call JSON_failtest(error_cnt)
+ end do
+ 
+ end subroutine JSON_writeNMLintegers
+@@ -210,6 +212,7 @@ recursive subroutine JSON_writeNMLreals(inp, io_real, reallist, n_real, error_cn
+ IMPLICIT NONE
+ 
+ type(json_value),INTENT(INOUT),pointer                :: inp
++type(json_core)                                       :: core
+ !f2py intent(in,out) ::  inp
+ integer(kind=irg),INTENT(IN)                          :: n_real
+ real(kind=sgl),INTENT(IN)                             :: io_real(n_real)
+@@ -222,7 +225,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ 
+ do i=1,n_real
+   dataset = reallist(i)
+-  call json_add(inp, dataset, dble(io_real(i))); call JSON_failtest(error_cnt)
++  call core%add(inp, dataset, dble(io_real(i))); call JSON_failtest(error_cnt)
+ end do
+ 
+ end subroutine JSON_writeNMLreals
+@@ -249,6 +252,7 @@ recursive subroutine JSON_writeNMLdoubles(inp, io_real, reallist, n_real, error_
+ IMPLICIT NONE
+ 
+ type(json_value),INTENT(INOUT),pointer                :: inp
++type(json_core)                                       :: core
+ !f2py intent(in,out) ::  inp
+ integer(kind=irg),INTENT(IN)                          :: n_real
+ real(kind=dbl),INTENT(IN)                             :: io_real(n_real)
+@@ -261,7 +265,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ 
+ do i=1,n_real
+   dataset = reallist(i)
+-  call json_add(inp, dataset, io_real(i)); call JSON_failtest(error_cnt)
++  call core%add(inp, dataset, io_real(i)); call JSON_failtest(error_cnt)
+ end do
+ 
+ end subroutine JSON_writeNMLdoubles
+@@ -288,21 +292,23 @@ recursive subroutine JSON_initpointers(p, inp, jsonname, namelistname, error_cnt
+ IMPLICIT NONE
+ 
+ type(json_value),INTENT(INOUT),pointer  :: p, inp
++type(json_core)                         :: core
+ !f2py intent(in,out) ::  p, inp
+ character(fnlen),INTENT(IN)             :: jsonname, namelistname
++type(json_file)                         :: json
+ integer(kind=irg),INTENT(INOUT)         :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ ! initialize the json state variables
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! create the json root pointer
+-call json_create_object(p,trim(jsonname)); call JSON_failtest(error_cnt)
++call core%create_object(p,trim(jsonname)); call JSON_failtest(error_cnt)
+ 
+ ! we'll use the namelist name to configure the inp structure and add it to p
+-call json_create_object(inp,trim(namelistname)); call JSON_failtest(error_cnt) 
+-call json_add(p, inp); call JSON_failtest(error_cnt)
++call core%create_object(inp,trim(namelistname)); call JSON_failtest(error_cnt) 
++call core%add(p, inp); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSON_initpointers
+ 
+@@ -329,6 +335,7 @@ use io
+ IMPLICIT NONE
+ 
+ type(json_value),INTENT(INOUT),pointer  :: p, inp
++type(json_core)                         :: core
+ !f2py intent(in,out) ::  p, inp
+ character(fnlen),INTENT(IN)             :: jsonname
+ integer(kind=irg),INTENT(INOUT)         :: error_cnt
+@@ -342,11 +349,11 @@ nullify(inp)
+ ! write the json file
+ fname = EMsoft_toNativePath(jsonname)
+ open(unit=dataunit, file=trim(fname), status='REPLACE')
+-call json_print(p,dataunit); call JSON_failtest(error_cnt)
++call core%print(p,dataunit); call JSON_failtest(error_cnt)
+ close(dataunit)
+ 
+ ! final cleanup
+-call json_destroy(p); call JSON_failtest(error_cnt)
++call core%destroy(p); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSON_cleanuppointers
+ 
+@@ -385,6 +392,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 5, n_real = 6
+ integer(kind=irg)                                     :: hdferr,  io_int(n_int)
+@@ -410,10 +418,10 @@ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ 
+ ! integer vectors
+ dataset = SC_k
+-call json_add(inp, dataset, knl%k); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, knl%k); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_fn
+-call json_add(inp, dataset, knl%fn); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, knl%fn); call JSON_failtest(error_cnt)
+ 
+ ! write all the single reals
+ io_real = (/ knl%voltage, knl%dmin, knl%convergence, knl%startthick, knl%thickinc, knl%minten /)
+@@ -427,10 +435,10 @@ call JSON_writeNMLreals(inp, io_real, reallist, n_real, error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_xtalname
+-call json_add(inp, dataset, knl%xtalname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, knl%xtalname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_outname
+-call json_add(inp, dataset, knl%outname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, knl%outname); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -464,6 +472,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 4, n_real = 5
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -497,13 +506,13 @@ call JSON_writeNMLreals(inp, io_real, reallist, n_real, error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_Kosselmode
+-call json_add(inp, dataset, knl%Kosselmode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, knl%Kosselmode); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_xtalname
+-call json_add(inp, dataset, knl%xtalname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, knl%xtalname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_outname
+-call json_add(inp, dataset, knl%outname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, knl%outname); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -538,6 +547,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 5, n_real = 7
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -572,13 +582,13 @@ call JSON_writeNMLdoubles(inp, io_real, reallist, n_real, error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_MCmode
+-call json_add(inp, dataset, mcnl%MCmode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%MCmode); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_xtalname
+-call json_add(inp, dataset, mcnl%xtalname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%xtalname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_dataname
+-call json_add(inp, dataset, mcnl%dataname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%dataname); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -615,6 +625,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 8, n_real_bse1 = 9, n_real_full = 7
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -667,16 +678,16 @@ else if (mcnl%mode .eq. 'full') then
+ end if
+ ! write all the strings
+ dataset = SC_MCmode
+-call json_add(inp, dataset, mcnl%MCmode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%MCmode); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_xtalname
+-call json_add(inp, dataset, mcnl%xtalname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%xtalname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_dataname
+-call json_add(inp, dataset, mcnl%dataname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%dataname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_mode
+-call json_add(inp, dataset, mcnl%mode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%mode); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -711,6 +722,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 5, n_real = 9
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -748,19 +760,19 @@ call JSON_writeNMLdoubles(inp, io_real, reallist, n_real, error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_MCmode
+-call json_add(inp, dataset, mcnl%MCmode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%MCmode); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_xtalnamefilm
+-call json_add(inp, dataset, mcnl%xtalname_film); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%xtalname_film); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_xtalnamesubs
+-call json_add(inp, dataset, mcnl%xtalname_subs); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%xtalname_subs); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_dataname
+-call json_add(inp, dataset, mcnl%dataname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%dataname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_mode
+-call json_add(inp, dataset, mcnl%mode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, mcnl%mode); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -795,6 +807,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 6, n_real = 1
+ integer(kind=irg)                                     :: io_int(n_int), restart, uniform
+@@ -830,14 +843,14 @@ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ 
+ ! write a single real
+ dataset = SC_dmin
+-call json_add(inp, dataset, dble(emnl%dmin)); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, dble(emnl%dmin)); call JSON_failtest(error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_outname
+-call json_add(inp, dataset, emnl%outname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, emnl%outname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_energyfile
+-call json_add(inp, dataset, emnl%energyfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, emnl%energyfile); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -872,6 +885,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 3, n_real = 1
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -893,13 +907,13 @@ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_inputfilename
+-call json_add(inp, dataset, emnl%inputfilename); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, emnl%inputfilename); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_groupname
+-call json_add(inp, dataset, emnl%groupname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, emnl%groupname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_datasetname
+-call json_add(inp, dataset, emnl%datasetname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, emnl%datasetname); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -935,6 +949,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 4, n_real = 1
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -956,11 +971,11 @@ intlist(4) = 'nthreads'
+ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ 
+ !dataset = 'distort'
+-!call json_add(inp, dataset, ecpnl%distort); call JSON_failtest(error_cnt)
++!call core%add(inp, dataset, ecpnl%distort); call JSON_failtest(error_cnt)
+ 
+ ! integer vectors
+ !dataset = 'fn'
+-!call json_add(inp, dataset, dble(ecpnl%fn)); call JSON_failtest(error_cnt)
++!call core%add(inp, dataset, dble(ecpnl%fn)); call JSON_failtest(error_cnt)
+ 
+ ! write all the single doubles
+ io_real = (/ ecpnl%dmin /)
+@@ -970,17 +985,17 @@ call JSON_writeNMLdoubles(inp, io_real, reallist, n_real, error_cnt)
+ 
+ ! 3-vectors (real)
+ !dataset = 'abcdist'
+-!call json_add(inp, dataset, dble(ecpnl%abcdist)); call JSON_failtest(error_cnt)
++!call core%add(inp, dataset, dble(ecpnl%abcdist)); call JSON_failtest(error_cnt)
+ 
+ !dataset = 'albegadist'
+-!call json_add(inp, dataset, dble(ecpnl%albegadist)); call JSON_failtest(error_cnt)
++!call core%add(inp, dataset, dble(ecpnl%albegadist)); call JSON_failtest(error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_energyfile
+-call json_add(inp, dataset, ecpnl%energyfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%energyfile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_compmode
+-call json_add(inp, dataset, ecpnl%compmode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%compmode); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -1015,6 +1030,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 6, n_real = 9
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -1054,39 +1070,39 @@ call JSON_writeNMLreals(inp, io_real, reallist, n_real, error_cnt)
+ 
+ ! a 4-vector
+ dataset = SC_axisangle
+-call json_add(inp, dataset, dble(enl%axisangle)); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, dble(enl%axisangle)); call JSON_failtest(error_cnt)
+ 
+ ! a few doubles
+ dataset = SC_beamcurrent
+-call json_add(inp, dataset, enl%beamcurrent); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, enl%beamcurrent); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_dwelltime
+-call json_add(inp, dataset, enl%dwelltime); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, enl%dwelltime); call JSON_failtest(error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_maskpattern
+-call json_add(inp, dataset, enl%maskpattern); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, enl%maskpattern); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_scalingmode
+-call json_add(inp, dataset, enl%scalingmode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, enl%scalingmode); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_eulerconvention
+-call json_add(inp, dataset, enl%eulerconvention); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, enl%eulerconvention); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_outputformat
+-call json_add(inp, dataset, enl%outputformat); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, enl%outputformat); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_energyfile
+-call json_add(inp, dataset, enl%energyfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, enl%energyfile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_masterfile
+-call json_add(inp, dataset, enl%masterfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, enl%masterfile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_anglefile
+-call json_add(inp, dataset, enl%anglefile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, enl%anglefile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_datafile
+-call json_add(inp, dataset, enl%datafile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, enl%datafile); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -1125,6 +1141,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ logical,INTENT(IN)                                    :: twolayerflag
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 2
+ integer(kind=irg)                                     :: n_real, istat
+@@ -1148,22 +1165,22 @@ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ if (twolayerflag) then
+ ! integer vectors
+ dataset = SC_fnf
+-    call json_add(inp, dataset, ecpnl%fn_f); call JSON_failtest(error_cnt)
++    call core%add(inp, dataset, ecpnl%fn_f); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_fns
+-    call json_add(inp, dataset, ecpnl%fn_s); call JSON_failtest(error_cnt)
++    call core%add(inp, dataset, ecpnl%fn_s); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_gF
+-    call json_add(inp, dataset, ecpnl%gF); call JSON_failtest(error_cnt)
++    call core%add(inp, dataset, ecpnl%gF); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_gS
+-    call json_add(inp, dataset, ecpnl%gS); call JSON_failtest(error_cnt)
++    call core%add(inp, dataset, ecpnl%gS); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_tF
+-    call json_add(inp, dataset, ecpnl%tF); call JSON_failtest(error_cnt)
++    call core%add(inp, dataset, ecpnl%tF); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_tS
+-    call json_add(inp, dataset, ecpnl%tS); call JSON_failtest(error_cnt)
++    call core%add(inp, dataset, ecpnl%tS); call JSON_failtest(error_cnt)
+ 
+    n_real = 8
+     allocate(reallist(n_real),io_real(n_real),stat=istat)
+@@ -1207,36 +1224,36 @@ end if
+ ! write all the strings
+ 
+ dataset = SC_energyfile
+-call json_add(inp, dataset, ecpnl%energyfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%energyfile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_masterfile
+-call json_add(inp, dataset, ecpnl%masterfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%masterfile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_datafile
+-call json_add(inp, dataset, ecpnl%datafile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%datafile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_xtalname
+-call json_add(inp, dataset, ecpnl%xtalname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%xtalname); call JSON_failtest(error_cnt)
+ 
+ if (twolayerflag) then
+ dataset = SC_xtalname2
+-    call json_add(inp, dataset, ecpnl%xtalname2); call JSON_failtest(error_cnt)
++    call core%add(inp, dataset, ecpnl%xtalname2); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_filmfile
+-    call json_add(inp, dataset, ecpnl%filmfile); call JSON_failtest(error_cnt)
++    call core%add(inp, dataset, ecpnl%filmfile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_subsfile
+-    call json_add(inp, dataset, ecpnl%subsfile); call JSON_failtest(error_cnt)
++    call core%add(inp, dataset, ecpnl%subsfile); call JSON_failtest(error_cnt)
+ end if
+ 
+ dataset = SC_maskpattern
+-call json_add(inp, dataset, ecpnl%maskpattern); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%maskpattern); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_anglefile
+-call json_add(inp, dataset, ecpnl%anglefile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%anglefile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_outputformat
+-call json_add(inp, dataset, ecpnl%outputformat); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%outputformat); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -1271,6 +1288,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 4, n_real = 6
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -1293,10 +1311,10 @@ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ 
+ ! vectors
+ dataset = SC_k
+-call json_add(inp, dataset, lacbednl%k); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, lacbednl%k); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_fn
+-call json_add(inp, dataset, lacbednl%fn); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, lacbednl%fn); call JSON_failtest(error_cnt)
+ 
+ ! write all the single reals
+ io_real = (/ lacbednl%voltage, lacbednl%dmin, lacbednl%convergence, lacbednl%startthick, lacbednl%thickinc, lacbednl%minten/)
+@@ -1310,10 +1328,10 @@ call JSON_writeNMLreals(inp, io_real, reallist, n_real, error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_outname
+-call json_add(inp, dataset, lacbednl%outname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, lacbednl%outname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_xtalname
+-call json_add(inp, dataset, lacbednl%xtalname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, lacbednl%xtalname); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -1348,6 +1366,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 2, n_real = 6
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -1368,18 +1387,18 @@ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ 
+ ! single real
+ dataset = SC_thetac
+-call json_add(inp, dataset, dble(ecpnl%thetac)); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, dble(ecpnl%thetac)); call JSON_failtest(error_cnt)
+ 
+ ! real vector
+ dataset = SC_k
+-call json_add(inp, dataset, dble(ecpnl%k)); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, dble(ecpnl%k)); call JSON_failtest(error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_outname
+-call json_add(inp, dataset, ecpnl%outname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%outname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_masterfile
+-call json_add(inp, dataset, ecpnl%masterfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, ecpnl%masterfile); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -1414,6 +1433,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 3, n_real = 4
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -1443,16 +1463,16 @@ call JSON_writeNMLreals(inp, io_real, reallist, n_real, error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_outname
+-call json_add(inp, dataset, pednl%outname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, pednl%outname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_xtalname
+-call json_add(inp, dataset, pednl%xtalname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, pednl%xtalname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_eulerfile
+-call json_add(inp, dataset, pednl%eulerfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, pednl%eulerfile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_sampling
+-call json_add(inp, dataset, pednl%sampling); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, pednl%sampling); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -1487,6 +1507,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 5, n_real = 6
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -1510,10 +1531,10 @@ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ 
+ ! vectors
+ dataset = SC_k
+-call json_add(inp, dataset, pednl%k); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, pednl%k); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_fn
+-call json_add(inp, dataset, pednl%fn); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, pednl%fn); call JSON_failtest(error_cnt)
+ 
+ ! single reals
+ io_real = (/ pednl%voltage, pednl%dmin, pednl%precangle, pednl%prechalfwidth, pednl%thickness, pednl%camlen /)
+@@ -1528,13 +1549,13 @@ call JSON_writeNMLreals(inp, io_real, reallist, n_real, error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_outname
+-call json_add(inp, dataset, pednl%outname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, pednl%outname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_xtalname
+-call json_add(inp, dataset, pednl%xtalname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, pednl%xtalname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_filemode
+-call json_add(inp, dataset, pednl%filemode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, pednl%filemode); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -1569,6 +1590,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 5, n_real = 6
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -1593,7 +1615,7 @@ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ 
+ ! vectors
+ dataset = SC_k
+-call json_add(inp, dataset, eccinl%k); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, eccinl%k); call JSON_failtest(error_cnt)
+ 
+ ! single reals
+ io_real = (/ eccinl%voltage, eccinl%dkt, eccinl%ktmax, eccinl%dmin, eccinl%DF_L, eccinl%DF_slice /)
+@@ -1608,35 +1630,35 @@ call JSON_writeNMLreals(inp, io_real, reallist, n_real, error_cnt)
+ 
+ ! 2-vectors
+ dataset = SC_lauec
+-call json_add(inp, dataset, dble(eccinl%lauec)); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, dble(eccinl%lauec)); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_lauec2
+-call json_add(inp, dataset, dble(eccinl%lauec2)); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, dble(eccinl%lauec2)); call JSON_failtest(error_cnt)
+ 
+ ! write all the strings
+ dataset = SC_dispmode
+-call json_add(inp, dataset, eccinl%dispmode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, eccinl%dispmode); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_summode
+-call json_add(inp, dataset, eccinl%summode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, eccinl%summode); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_progmode
+-call json_add(inp, dataset, eccinl%progmode); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, eccinl%progmode); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_xtalname
+-call json_add(inp, dataset, eccinl%xtalname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, eccinl%xtalname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_defectfilename
+-call json_add(inp, dataset, eccinl%defectfilename); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, eccinl%defectfilename); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_dispfile
+-call json_add(inp, dataset, eccinl%dispfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, eccinl%dispfile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_dataname
+-call json_add(inp, dataset, eccinl%dataname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, eccinl%dataname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_ECPname
+-call json_add(inp, dataset, eccinl%ECPname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, eccinl%ECPname); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -1672,6 +1694,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 3, n_real = 1
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -1694,25 +1717,25 @@ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ 
+ ! strings
+ dataset = SC_euoutname
+-call json_add(inp, dataset, rfznl%euoutname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, rfznl%euoutname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_cuoutname
+-call json_add(inp, dataset, rfznl%cuoutname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, rfznl%cuoutname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_hooutname
+-call json_add(inp, dataset, rfznl%hooutname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, rfznl%hooutname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_quoutname
+-call json_add(inp, dataset, rfznl%quoutname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, rfznl%quoutname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_rooutname
+-call json_add(inp, dataset, rfznl%rooutname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, rfznl%rooutname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_omoutname
+-call json_add(inp, dataset, rfznl%omoutname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, rfznl%omoutname); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_axoutname
+-call json_add(inp, dataset, rfznl%axoutname); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, rfznl%axoutname); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -1749,6 +1772,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_value),pointer                              :: p, inp
++type(json_core)                                       :: core
+ 
+ integer(kind=irg),parameter                           :: n_int = 7, n_real = 1
+ integer(kind=irg)                                     :: io_int(n_int)
+@@ -1775,17 +1799,17 @@ intlist(7) = 'nnk'
+ call JSON_writeNMLintegers(inp, io_int, intlist, n_int, error_cnt)
+ 
+ dataset = SC_MeanSubtraction
+-call json_add(inp, dataset, dictindxnl%MeanSubtraction); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, dictindxnl%MeanSubtraction); call JSON_failtest(error_cnt)
+ 
+ ! strings
+ dataset = SC_exptfile
+-call json_add(inp, dataset, dictindxnl%exptfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, dictindxnl%exptfile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_dictfile
+-call json_add(inp, dataset, dictindxnl%dictfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, dictindxnl%dictfile); call JSON_failtest(error_cnt)
+ 
+ dataset = SC_eulerfile
+-call json_add(inp, dataset, dictindxnl%eulerfile); call JSON_failtest(error_cnt)
++call core%add(inp, dataset, dictindxnl%eulerfile); call JSON_failtest(error_cnt)
+ 
+ ! and then we write the file and clean up
+ call JSON_cleanuppointers(p, inp, jsonname, error_cnt)
+@@ -2190,6 +2214,8 @@ use, intrinsic :: iso_fortran_env, only: wp => real64
+ IMPLICIT NONE
+ 
+ type(json_value), pointer,INTENT(IN)            :: child
++type(json_core)                                 :: core
++type(json_file)                                 :: json
+ character(fnlen)                                :: str
+ integer(kind=irg),INTENT(IN)                    :: v
+ real(kind=dbl)                                  :: oval
+@@ -2197,7 +2223,7 @@ real(kind=dbl)                                  :: oval
+ real(kind=wp)                                   :: val
+ real(kind=sgl)                                  :: io_real(1)
+ 
+-call json_get(child, val)
++call core%get(child, val)
+ if (v.eq.1) then
+   io_real(1) = val
+   call WriteValue(str,io_real,1)
+@@ -2230,6 +2256,7 @@ use, intrinsic :: iso_fortran_env, only: wp => real64
+ IMPLICIT NONE
+ 
+ type(json_value), pointer,INTENT(IN)            :: child
++type(json_core)                                 :: core
+ integer(kind=irg),INTENT(IN)                    :: nc
+ character(fnlen)                                :: str
+ integer(kind=irg),INTENT(IN)                    :: v
+@@ -2239,7 +2266,7 @@ real(kind=wp),dimension(:),allocatable          :: vec
+ real(kind=sgl)                                  :: io_real(nc)
+ 
+ allocate(vec(nc))
+-call json_get(child, vec)
++call core%get(child, vec)
+ if (v.eq.1) then
+   io_real(1:nc) = vec(1:nc)
+   call WriteValue(str,io_real,nc)
+@@ -2285,8 +2312,8 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ logical,INTENT(IN),OPTIONAL                           :: verbose
+ 
+ type(json_value),pointer                              :: jval, child, child2, child3
+-type(json_value), pointer                             :: tmp_json_ptr
+-character(kind=jsonCK,len=:),allocatable                  :: name
++type(json_value),pointer                              :: tmp_json_ptr
++character(kind=jsonCK,len=:),allocatable              :: name
+ integer(kind=irg)                                     :: v, i, j, jj, vart, nc, nc2, nc3, io_int(3)
+ real(kind=wp),dimension(:),allocatable                :: vec3
+ real(kind=wp)                                         :: val
+@@ -2294,6 +2321,8 @@ real(kind=sgl)                                        :: io_real(6), x
+ logical                                               :: found
+ character(4),parameter                                :: row(6) = (/ 'row1', 'row2', 'row3', 'row4', 'row5', 'row6' /)
+ character(fnlen)                                      :: str, filename
++type(json_file)                                       :: json
++type(json_core)                                       :: core
+ 
+ v = 0
+ if (PRESENT(verbose)) then
+@@ -2323,22 +2352,22 @@ filename = trim(EMsoft_getEMdatapathname())//trim(defects%foilname)
+ filename = EMsoft_toNativePath(filename)
+ 
+ ! json has alrady been initialized, so we should be ok directly reading the data from the file
+-call json_parse(trim(filename), jval)
++call core%parse(trim(filename), jval)
+ 
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+-  call json_info(jval,vart,nc,name)             ! jval name = filename
++  call core%info(jval,vart,nc,name)             ! jval name = filename
+ 
+ ! loop over the children (only 1)
+   do i=1,nc
+-    call json_get_child(jval,i,child)
+-    call json_info(child,vart,nc2,name)         ! child name = FoilDescriptor
++    call core%get_child(jval,i,child)
++    call core%info(child,vart,nc2,name)         ! child name = FoilDescriptor
+ 
+     nc2loop: do j=1,nc2
+-      call json_get_child(child,j,child2)
+-      call json_info(child2,vart,nc3,name)
++      call core%get_child(child,j,child2)
++      call core%info(child2,vart,nc3,name)
+ ! foil normal
+         if (name.eq.'foilF') then 
+           str = '   Foil normal F = ' 
+@@ -2398,8 +2427,8 @@ else
+         if (name.eq.'foilelmo') then 
+           str = ''
+           do jj=1,6
+-           call json_get_child(child2,jj,child3)
+-           call json_info(child3,vart,nc3,name)
++           call core%get_child(child2,jj,child3)
++           call core%info(child3,vart,nc3,name)
+            if (name.eq.row(jj)) defects%foil%elmo(jj,1:6) = JSONgetDoubleVector(child3,nc3,str,0)
+           end do
+           if (v.eq.1) then
+@@ -2471,6 +2500,7 @@ integer(kind=irg)                                     :: vart,nc, nc2, nc3, nc4,
+ logical                                               :: found
+ character(fnlen)                                      :: foilfilename, str, filename, dummystr
+ real(wp)                                              :: v4(4), v5(5), v6(6), v9(9), io_real(6)
++type(json_core)                                       :: core
+ 
+ v = 0
+ if (PRESENT(verbose)) then
+@@ -2481,41 +2511,41 @@ end if
+ dummystr = ''
+ ! first of all, initialize json and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ filename = trim(EMsoft_getEMdatapathname())//trim(jsonname)
+ filename = EMsoft_toNativePath(filename)
+ 
+ ! populate the jval json_value structure
+-call json_parse(trim(filename), jval)
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++call core%parse(trim(filename), jval)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! get the top level file descriptor (should be the file name) and the number of its children nc (should really be 1)
+-  call json_info(jval,vart,nc,name)             ! jval name = filename
++  call core%info(jval,vart,nc,name)             ! jval name = filename
+   if (v.eq.1) then 
+     call WriteValue(' Defect file name : ',name,"(' ',A)")
+   end if
+ 
+ ! loop over the children
+   do i=1,nc
+-    call json_get_child(jval,i,child)
+-    call json_info(child,vart,nc2,name)         ! child name = DefectDescriptors
++    call core%get_child(jval,i,child)
++    call core%info(child,vart,nc2,name)         ! child name = DefectDescriptors
+ 
+ ! loop over those children, which are the actual defect descriptors and deal with each of them separately
+ 
+ ! the foil date must be the first entry; if it is not, then loop until we find it
+     found = .FALSE.
+     nc2loop: do j=1,nc2
+-      call json_get_child(child,j,child2)
+-      call json_info(child2,vart,nc3,name)
++      call core%get_child(child,j,child2)
++      call core%info(child2,vart,nc3,name)
+       if (.not.(name.eq.'foil')) CYCLE nc2loop
+ ! name = foil, so read the name of the foil descriptor file
+-      call json_get(child2,'foilfilename',child3,found)
++      call core%get(child2,'foilfilename',child3,found)
+       jskip = j
+       if (found) then
+-        call json_get(child3, name)
++        call core%get(child3, name)
+         if (v.eq.1) call WriteValue(' Foil file name = ',trim(name),"(' ',A)")
+         defects%foilname = trim(name)
+       end if
+@@ -2533,8 +2563,8 @@ else
+     ndis = 0
+     nc2loop2: do j=1,nc2
+       if (j.eq.jskip) CYCLE nc2loop2
+-      call json_get_child(child,j,child2)
+-      call json_info(child2,vart,nc3,name)
++      call core%get_child(child,j,child2)
++      call core%info(child2,vart,nc3,name)
+       if (name.eq.'voids') then 
+         allocate(defects%voids(nc3))
+         defects%numvoids = nc3
+@@ -2568,8 +2598,8 @@ else
+     ndis = 1
+     nc2loop3: do j=1,nc2
+       if (j.eq.jskip) CYCLE nc2loop3
+-      call json_get_child(child,j,child2)
+-      call json_info(child2,vart,nc3,name)
++      call core%get_child(child,j,child2)
++      call core%info(child2,vart,nc3,name)
+       
+ ! dislocations
+       if (name.eq.'dislocations') then
+@@ -2578,11 +2608,11 @@ else
+            io_int(1) = jj
+            call WriteValue('   dislocation #  ',io_int,1,"(I4)")
+          end if
+-         call json_get_child(child2,jj,child3)
+-         call json_info(child3,vart,nc4,name)
++         call core%get_child(child2,jj,child3)
++         call core%info(child3,vart,nc4,name)
+          do kk=1,nc4
+-          call json_get_child(child3,kk,child4)
+-          call json_info(child4,vart,nc5,name)
++          call core%get_child(child3,kk,child4)
++          call core%info(child4,vart,nc5,name)
+           if (name.eq.'id') then
+             str = '        x-coordinate  = ' 
+             defects%DL(ndis)%id = JSONgetDouble(child4,str,v)
+@@ -2616,11 +2646,11 @@ else
+            io_int(1) = jj
+            call WriteValue('   Ydislocation #  ',io_int,1,"(I4)")
+          end if
+-         call json_get_child(child2,jj,child3)
+-         call json_info(child3,vart,nc4,name)
++         call core%get_child(child2,jj,child3)
++         call core%info(child3,vart,nc4,name)
+          do kk=1,nc4
+-          call json_get_child(child3,kk,child4)
+-          call json_info(child4,vart,nc5,name)
++          call core%get_child(child3,kk,child4)
++          call core%info(child4,vart,nc5,name)
+           if (name.eq.'id') then
+             str = '        x-coordinate  = ' 
+             defects%YD(jj)%id = JSONgetDouble(child4,str,v)
+@@ -2653,11 +2683,11 @@ else
+            io_int(1) = jj
+            call WriteValue('   Stacking Fault #  ',io_int,1,"(I4)")
+          end if
+-         call json_get_child(child2,jj,child3)
+-         call json_info(child3,vart,nc4,name)
++         call core%get_child(child2,jj,child3)
++         call core%info(child3,vart,nc4,name)
+          do kk=1,nc4
+-          call json_get_child(child3,kk,child4)
+-          call json_info(child4,vart,nc5,name)
++          call core%get_child(child3,kk,child4)
++          call core%info(child4,vart,nc5,name)
+           if (name.eq.'SFi') then
+             str = '        x-coordinate  = ' 
+             defects%SF(jj)%id = JSONgetDouble(child4,str,v)
+@@ -2698,8 +2728,8 @@ else
+ ! voids
+       if (name.eq.'voids') then
+         do jj=1,nc3
+-         call json_get_child(child2,jj,child3)
+-         call json_info(child3,vart,nc4,name)
++         call core%get_child(child2,jj,child3)
++         call core%info(child3,vart,nc4,name)
+          v4 = JSONgetDoubleVector(child3,nc4,dummystr,0)
+          defects%voids(jj)%xpos = v4(1)
+          defects%voids(jj)%ypos = v4(2)
+@@ -2718,8 +2748,8 @@ else
+ ! inclusions 
+       if (name.eq.'inclusions') then
+         do jj=1,nc3
+-         call json_get_child(child2,jj,child3)
+-         call json_info(child3,vart,nc4,name)
++         call core%get_child(child2,jj,child3)
++         call core%info(child3,vart,nc4,name)
+          v5 = JSONgetDoubleVector(child3,nc4,dummystr,0)
+          defects%inclusions(jj)%xpos = v5(1)
+          defects%inclusions(jj)%ypos = v5(2)
+@@ -2743,11 +2773,11 @@ else
+             io_int(1) = jj
+             call WriteValue('   Einclusion   #  ',io_int,1,"(I4)")
+           end if
+-          call json_get_child(child2,jj,child3)
+-          call json_info(child3,vart,nc4,name)
++          call core%get_child(child2,jj,child3)
++          call core%info(child3,vart,nc4,name)
+           do kk=1,nc4
+-           call json_get_child(child3,kk,child4)
+-           call json_info(child4,vart,nc5,name)
++           call core%get_child(child3,kk,child4)
++           call core%info(child4,vart,nc5,name)
+            if (name.eq.'xyz') then
+              str = '        xyz           = ' 
+              defects%Einclusions(jj)%xyz = JSONgetDoubleVector(child4,nc5,str,v)
+@@ -2825,6 +2855,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(KosselNameListType)                              :: defknl
+ logical                                               :: init = .TRUE.
+@@ -2835,12 +2866,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -2882,7 +2913,7 @@ else
+   call JSONreadString(json, ep, knl%outname, defknl%outname)
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadKosselNameList
+ 
+@@ -2915,6 +2946,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(KosselMasterNameListType)                        :: defknl
+ logical                                               :: init = .TRUE.
+@@ -2925,12 +2957,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -2968,7 +3000,7 @@ else
+   call JSONreadString(json, ep, knl%outname, defknl%outname)
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadKosselMasterNameList
+ 
+@@ -3001,6 +3033,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(reflectorNameListType)                           :: defrnl
+ logical                                               :: init = .TRUE.
+@@ -3011,12 +3044,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -3034,7 +3067,7 @@ else
+   call JSONreadString(json, ep, rnl%listfile, defrnl%listfile)
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadreflectorNameList
+ 
+@@ -3068,6 +3101,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(MCNameListType)                                  :: defmcnl
+ logical                                               :: init = .TRUE.
+@@ -3078,12 +3112,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -3126,7 +3160,7 @@ else
+   call JSONreadString(json, ep, mcnl%dataname, defmcnl%dataname)
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadMCNameList
+ 
+@@ -3160,6 +3194,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(MCCLNameListType)                                :: defmcnl
+ logical                                               :: init = .TRUE.
+@@ -3170,12 +3205,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -3230,7 +3265,7 @@ else
+   call JSONreadString(json, ep, mcnl%mode, defmcnl%mode)
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadMCCLNameList
+ 
+@@ -3263,6 +3298,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(MCCLMultiLayerNameListType)                      :: defmcnl
+ logical                                               :: init = .TRUE.
+@@ -3273,12 +3309,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -3329,7 +3365,7 @@ else
+   call JSONreadString(json, ep, mcnl%mode, defmcnl%mode)
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadMCCLMultiLayerNameList
+ 
+@@ -3362,6 +3398,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(EBSDMasterNameListType)                          :: defemnl
+ logical                                               :: init = .TRUE.
+@@ -3372,12 +3409,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -3405,7 +3442,7 @@ else
+   call JSONreadLogical(json, ep, emnl%restart, defemnl%restart)
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadEBSDMasterNameList
+ 
+@@ -3438,6 +3475,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(EBSDclusterNameListType)                         :: defemnl
+ logical                                               :: init = .TRUE.
+@@ -3448,12 +3486,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -3477,7 +3515,7 @@ else
+ 
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadEBSDclusterNameList
+ 
+@@ -3513,6 +3551,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(ECPMasterNameListType)                           :: defecpnl
+ logical                                               :: init = .TRUE.
+@@ -3523,12 +3562,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -3565,7 +3604,7 @@ else
+   !call JSONreadLogical(json, ep, ecpnl%distort, defecpnl%distort)
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadECPMasterNameList
+ 
+@@ -3599,6 +3638,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(EBSDNameListType)                                :: defenl
+ logical                                               :: init = .TRUE.
+@@ -3609,12 +3649,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -3685,7 +3725,7 @@ else
+   call JSONreadString(json, ep, enl%datafile, defenl%datafile)
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadEBSDNameList
+ 
+@@ -3719,6 +3759,7 @@ integer(kind=irg),INTENT(INOUT)                       :: error_cnt
+ !f2py intent(in,out) ::  error_cnt
+ 
+ type(json_file)                                       :: json    !the JSON structure read from the file:
++type(json_core)                                       :: core
+ 
+ type(EBSDoverlapNameListType)                         :: defenl
+ logical                                               :: init = .TRUE.
+@@ -3729,12 +3770,12 @@ real(wp),dimension(:),allocatable                     :: rvec
+ 
+ ! first of all, open the file and return an error message if it does not exist
+ error_cnt = 0
+-call json_initialize(); call JSON_failtest(error_cnt)
++call json%initialize(); call JSON_failtest(error_cnt)
+ 
+ ! populate the json structure
+ call json%load_file(filename = trim(jsonname))
+-if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-  call json_print_error_message(error_unit)
++if (json%failed()) then    !if there was an error reading the file
++  call json%print_error_message(error_unit)
+   error_cnt = error_cnt + 1
+ else
+ ! ok, we got here so we need to initialize the namelist first to its default values (set in NameListHandlers)
+@@ -3768,7 +3809,7 @@ else
+   call JSONreadString(json, ep, enl%datafile, defenl%datafile)
+ end if
+ 
+-call json%destroy(); call JSON_failtest(error_cnt)
++call core%destroy(); call JSON_failtest(error_cnt)
+ 
+ end subroutine JSONreadEBSDoverlapNameList
+ 
+diff --git a/Source/EMsoftLib/local.f90.in b/Source/EMsoftLib/local.f90.in
+index 07da5b0..1e3e946 100644
+--- a/Source/EMsoftLib/local.f90.in
++++ b/Source/EMsoftLib/local.f90.in
+@@ -956,16 +956,16 @@ inquire(file=trim(jsonname),exist=jexists)
+ if (jexists) then
+ ! initialize the json state variables
+   error_cnt = 0
+-  call json_initialize()
+-  if (json_failed()) then
+-    call json_print_error_message(error_unit)
++  call json%initialize()
++  if (json%failed()) then
++    call json%print_error_message(error_unit)
+     stop
+   end if
+ 
+ ! and load the file
+   call json%load_file(filename = trim(jsonname))
+-  if (json_failed().eqv..TRUE.) then    !if there was an error reading the file
+-    call json_print_error_message(error_unit)
++  if (json%failed().eqv..TRUE.) then    !if there was an error reading the file
++    call json%print_error_message(error_unit)
+     stop
+   end if
+ 
+-- 
+2.30.2
+

@@ -1,0 +1,1697 @@
+From f0313f3a35bf5bf5572c2c7d05257d522db21328 Mon Sep 17 00:00:00 2001
+From: Eric Prestat <eric.prestat@gmail.com>
+Date: Fri, 28 Jan 2022 11:37:25 +0000
+Subject: [PATCH] Move 'objective_function' to PSO.mod to fix building with
+ shared libraries
+
+---
+ Source/EMsoftHDFLib/CMakeLists.txt |   1 +
+ Source/EMsoftHDFLib/PSOmod.f90     | 799 +++++++++++++++++++++++++++++
+ Source/EMsoftLib/CMakeLists.txt    |   1 -
+ Source/EMsoftLib/PSOmod.f90        | 234 ---------
+ Source/SEM/EMEBSDGlobalOpt.f90     | 570 +-------------------
+ 5 files changed, 804 insertions(+), 801 deletions(-)
+ create mode 100644 Source/EMsoftHDFLib/PSOmod.f90
+ delete mode 100644 Source/EMsoftLib/PSOmod.f90
+
+diff --git a/Source/EMsoftHDFLib/CMakeLists.txt b/Source/EMsoftHDFLib/CMakeLists.txt
+index dcfc0d2..7bd01a3 100644
+--- a/Source/EMsoftHDFLib/CMakeLists.txt
++++ b/Source/EMsoftHDFLib/CMakeLists.txt
+@@ -42,6 +42,7 @@ set(EMsoftHDFLib_SRCS
+   ${EMsoftHDFLib_SOURCE_DIR}/utilities.f90
+   ${EMsoftHDFLib_SOURCE_DIR}/hhHDFmod.f90
+   ${EMsoftHDFLib_SOURCE_DIR}/MDsubroutines.f90
++  ${EMsoftHDFLib_SOURCE_DIR}/PSOmod.f90
+ 
+ # 	${EMsoftHDFLib_SOURCE_DIR}/EMdymodHDF.f90
+ )
+diff --git a/Source/EMsoftHDFLib/PSOmod.f90 b/Source/EMsoftHDFLib/PSOmod.f90
+new file mode 100644
+index 0000000..9c4d720
+--- /dev/null
++++ b/Source/EMsoftHDFLib/PSOmod.f90
+@@ -0,0 +1,799 @@
++! ###################################################################
++! Copyright (c) 2013-2022, Marc De Graef Research Group/Carnegie Mellon University
++! All rights reserved.
++!
++! Redistribution and use in source and binary forms, with or without modification, are
++! permitted provided that the following conditions are met:
++!
++!     - Redistributions of source code must retain the above copyright notice, this list
++!        of conditions and the following disclaimer.
++!     - Redistributions in binary form must reproduce the above copyright notice, this
++!        list of conditions and the following disclaimer in the documentation and/or
++!        other materials provided with the distribution.
++!     - Neither the names of Marc De Graef, Carnegie Mellon University nor the names 
++!        of its contributors may be used to endorse or promote products derived from 
++!        this software without specific prior written permission.
++!
++! THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
++! AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
++! IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
++! ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
++! LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
++! DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
++! SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
++! CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, 
++! OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE 
++! USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++! ###################################################################
++!--------------------------------------------------------------------------
++! EMsoft:PSOmod.f90
++!--------------------------------------------------------------------------
++!
++! Module: PSOmod
++!
++!> @author Chaoyi Zhu/Marcus Ochsendorf/Marc De Graef, Carnegie Mellon University
++!
++!> @brief Global Optimization for Pattern Center, Orientation, and 
++! Deformation using Dynamical EBSD patterns
++!
++!> @date  09/15/20  CZ 1.0 
++! ###################################################################
++
++module PSOmod
++    implicit none
++
++    ! the object that stores all relevant parameters of optimization
++    type particle
++        real(kind=4), dimension(:), allocatable :: parameters
++        real(kind=4), dimension(:), allocatable :: velocity
++        real(kind=4), dimension(:), allocatable :: best_parameters
++        real(kind=4) :: best_cost,current_cost
++    end type particle 
++    
++contains
++
++    recursive subroutine particle_init(part, num_parameters,min,max)
++        ! initializes the particles 
++        use, intrinsic :: ISO_Fortran_env
++        implicit none
++        type (particle) :: part
++        integer ,intent(in) ::  num_parameters
++        real(kind=4), dimension(num_parameters), intent(in) :: min,max
++        real(kind=4) :: diff
++        integer(kind=4) :: i
++        real(kind=4), dimension(:), allocatable :: rand
++
++        ! Initialization of the random number generation
++        allocate(rand(num_parameters)) 
++        call random_number(rand)
++        
++        do i=1,num_parameters
++            diff = max(i) - min(i)
++            rand(i) = min(i) + diff*rand(i)
++        end do
++        
++        ! Initialization of the particle object
++        allocate(part%parameters(num_parameters))
++        allocate(part%velocity(num_parameters))
++        allocate(part%best_parameters(num_parameters))
++
++        part%best_cost = HUGE(1.0)
++        part%current_cost = HUGE(1.0)
++        part%parameters = rand 
++        part%best_parameters = rand 
++
++        do i=1,num_parameters
++            part%velocity(i) = 0
++        end do
++    
++    end subroutine particle_init
++
++    subroutine swarm_init(swarm, num_param, minimum, maximum)
++        ! intializes the swarm by generating the initial guesses for the optimization problem
++        implicit none
++        type (particle), dimension(:), intent(inout) :: swarm
++        integer, intent(in) :: num_param 
++        real(kind=4), dimension(num_param), intent(in) :: minimum, maximum
++        integer :: i   
++
++        do i=1,size(swarm)
++            call particle_init(swarm(i),num_param,min = minimum, max=maximum)
++        end do
++
++    end subroutine swarm_init
++
++   subroutine swarm_init_single(swarm, num_param, minimum, maximum)
++        ! intializes the swarm by generating the initial guesses for the optimization problem
++        implicit none
++        type (particle), intent(inout) :: swarm
++        integer, intent(in) :: num_param 
++        real(kind=4), dimension(num_param), intent(in) :: minimum, maximum
++        call particle_init(swarm,num_param,min = minimum, max=maximum)
++        
++    end subroutine swarm_init_single
++
++    recursive subroutine print_particle(part)
++        ! prints all of the variables stored within a particle object
++        implicit none
++        type (particle),intent(in) :: part
++        write(*,*)
++        print *, "The current parameters of this particle are: "
++        print *, part%parameters
++        print *, "The best parameters this particle found are: "
++        print *, part%best_parameters
++        print *, "The current velocity of this particle is: "
++        print *, part%velocity
++        print *, "The current cost of the particle is: "
++        print *, part%current_cost
++        print *, "The best cost that this particle found is: "
++        print *, part%best_cost
++    
++    end subroutine print_particle
++
++    recursive subroutine random_init()
++        ! set the seed for random number generation
++        implicit none
++        integer(kind=4) :: i,n,clock
++        integer(kind=4) , dimension(:), allocatable :: seed
++
++        call random_seed(size = n)
++        allocate(seed(n))
++        call system_clock(count = clock)
++        seed = clock + 37*(/(i-1,i=1,n)/)
++        call random_seed(put =seed)
++        deallocate(seed)
++    
++    end subroutine random_init
++
++
++
++  subroutine find_min(swarm, best, w, w_damp, c1, c2, Dim_XC, st_initial,de,&
++     mcnl, mpnl, EBSDMCdata, EBSDMPdata, patterndata, enl, offset3, minimum, maximum)
++        use local
++        use typedefs
++        use NameListTypedefs
++        use HDF5
++       
++        
++        IMPLICIT NONE
++        type(MCCLNameListType),intent(inout)                           :: mcnl
++        type(EBSDMasterNameListType),intent(inout)                     :: mpnl
++        type(EBSDMCdataType),intent(inout)                             :: EBSDMCdata
++        type(EBSDMPdataType),intent(inout)                             :: EBSDMPdata
++        type(EBSDDIpreviewNameListType),INTENT(INOUT)       :: patterndata
++        type(EBSDNameListType),INTENT(INOUT)                :: enl
++        type(EBSDDENameListType),INTENT(INOUT)              :: de
++        integer(kind=4),INTENT(IN)                        :: Dim_XC
++        integer(HSIZE_T),intent(in)                         :: offset3(3)
++        real(kind=4),dimension(3),INTENT(IN)              ::  st_initial
++        type (particle), dimension(:), intent(inout)  :: swarm
++        real(kind=4), dimension(Dim_XC), intent(in)  :: minimum, maximum
++        type (particle), intent(inout) :: best
++        real(kind=4), intent(inout) :: w 
++        real(kind=4), intent(in) :: w_damp, c1, c2
++        real(kind=4) :: v_ideal, v_ave, v_start, maxVelocity(Dim_XC), minVelocity(Dim_XC)
++        real(kind=4) :: value(size(swarm),Dim_XC), rand_step_1, rand_step_2, objval(size(swarm))
++        
++        integer :: i,j,k,s,iter, iloc
++        
++        iter=1
++        v_start=0.0
++        maxVelocity=0.1*(maximum-minimum)
++        minVelocity=-maxVelocity
++
++        do i=1, de%itermax
++                value=0.0              
++            do j=1,size(swarm)
++                call random_number(rand_step_1)
++                call random_number(rand_step_2)
++                swarm(j)%velocity = de%w*swarm(j)%velocity + de%c1*rand_step_1*(best%parameters - swarm(j)%parameters) &
++                & + de%c2*rand_step_2*(swarm(j)%best_parameters -swarm(j)%parameters)
++                swarm(j)%parameters = swarm(j)%parameters + swarm(j)%velocity
++                ! Confine invidual particle velocity in the lower-upper bound
++                swarm(j)%velocity =max(min(swarm(j)%velocity,maxVelocity),minVelocity)
++                ! Confine invidual particle in the lower-upper bound
++                swarm(j)%parameters=max(min(swarm(j)%parameters,maximum),minimum)
++                value(j,1:Dim_XC)=swarm(j)%parameters
++            end do
++
++            call objective_function(offset3, value, st_initial, objval, Dim_XC, &
++            enl, patterndata, size(swarm), de%objective, mcnl, mpnl, EBSDMCdata, EBSDMPdata)
++            
++            ! updates the inertia weight
++            de%w = de%w*de%w_damp  
++          
++            do k=1,size(swarm)
++              swarm(k)%current_cost=objval(k)
++              if (swarm(k)%best_cost > swarm(k)%current_cost) then
++                swarm(k)%best_cost = swarm(k)%current_cost
++                swarm(k)%best_parameters = swarm(k)%parameters      
++              end if
++            end do
++            iloc=minloc(objval,1)
++            best = swarm(iloc)
++            iter=iter+1
++
++            if( (de%refresh > 0) .and. (mod(iter,de%refresh)==0)) then
++              write(*,*)
++              print *,"# Iteration:",iter,": Objective function value:", best%best_cost 
++              print *,"# Best Member:", best%best_parameters
++            end if
++
++            ! end if best fitness if smaller than expected value to reach
++            if ( best%best_cost  <= de%VTR ) then
++              print *,"# The best fitness", best%best_cost , "is smaller than VTR at generation #", iter
++              print *,"# Best Member:", best%best_parameters
++              exit
++            end if
++            end do
++            
++
++    end subroutine find_min
++
++    subroutine objective_function(offset3, value,st_initial, objval, &
++      Dim_XC, enl, patterndata, numangles, objective, mcnl, mpnl, EBSDMCdata, EBSDMPdata)
++        use local
++        use typedefs
++        use NameListTypedefs
++        use NameListHDFwriters
++        use symmetry
++        use crystal
++        use constants
++        use io
++        use files
++        use diffraction
++        use detectors
++        use EBSDmod
++        use Lambert
++        use quaternions
++        use rotations
++        use noise
++        use HDF5
++        use HDFsupport
++        use ISO_C_BINDING
++        use omp_lib
++        use timing
++        use stringconstants
++        use math
++        use filters
++        use patternmod
++        use error
++        use image
++        use FFTW3mod
++        use, intrinsic :: iso_fortran_env
++
++        IMPLICIT NONE
++
++
++        type(EBSDNameListType),INTENT(INOUT)                :: enl
++        type(EBSDDIpreviewNameListType),INTENT(INOUT)       :: patterndata
++        integer(kind=irg),INTENT(IN)                        :: numangles, Dim_XC, objective
++        real(kind=sgl),dimension(3),INTENT(IN)              :: st_initial
++        real(kind=sgl), dimension(numangles, Dim_XC), intent(in)   :: value
++        real(kind=sgl), dimension(numangles),INTENT(OUT)    :: objval
++        integer(HSIZE_T),intent(in)                         :: offset3(3)
++        type(MCCLNameListType),intent(inout)                :: mcnl
++        type(EBSDMasterNameListType),intent(inout)          :: mpnl
++        type(EBSDMCdataType),intent(inout)                  :: EBSDMCdata
++        type(EBSDMPdataType),intent(inout)                  :: EBSDMPdata
++
++        ! all geometrical parameters and filenames
++        real(kind=dbl)                          :: prefactor, qz(3)
++        real(kind=sgl), dimension(numangles, Dim_XC)  :: X_value
++        ! allocatable arrays
++        real(kind=sgl),allocatable              :: EBSDpattern(:,:), binned(:,:)        ! array with EBSD patterns
++        real(kind=sgl),allocatable              :: z(:,:)               ! used to store the computed patterns before writing to disk
++        real(kind=sgl),allocatable              :: energywf(:), eulerangles(:,:)
++
++        ! arrays for each OpenMP thread
++        real(kind=sgl),allocatable              :: tmLPNH(:,:,:) , tmLPSH(:,:,:)
++        real(kind=sgl),allocatable              :: trgx(:,:), trgy(:,:), trgz(:,:)          ! auxiliary detector arrays needed for interpolation
++        real(kind=sgl),allocatable              :: taccum(:,:,:)
++
++        ! various items
++        integer(kind=irg)                       :: i, j, ii, jj, iang, jang, k, hdferr, dim2, recordsize         ! various counters
++        integer(kind=irg)                       :: iunitexpt, istat, istats, ipar(7), L, correctsize
++        integer(kind=irg)                       :: nix, niy, binx, biny, nixp, niyp     ! various parameters
++        integer(kind=irg)                       :: nthreads,maskradius
++        real(kind=sgl)                          :: norm_target,norm_pattern(numangles)
++        real(kind=sgl)                          :: ma, mi, tstart, tstop, io_real(3),temp_objval, max_p
++        real(kind=sgl),parameter                :: dtor = 0.0174533  ! convert from degrees to radians
++        real(kind=dbl),parameter                :: nAmpere = 6.241D+18   ! Coulomb per second
++        integer(kind=irg),parameter             :: storemax = 20        ! number of EBSD patterns stored in one output block
++        integer(kind=irg)                       :: Emin, Emax      ! various parameters
++        real(kind=dbl)                          :: dc(3), scl, nel, emult           ! direction cosine array
++        real(kind=dbl)                          :: sx, dx, dxm, dy, dym, rhos, x         ! various parameters
++        real(kind=dbl)                          :: ixy(2), tmp
++        real(kind=sgl),allocatable              :: mask(:,:), masklin(:), lx(:), ly(:), binnedvec(:), targetpattern(:)
++        character(kind=c_char),allocatable      :: batchpatterns(:,:,:), bpat(:,:)
++        integer(kind=irg),allocatable           :: batchpatternsint(:,:,:), bpatint(:,:)
++        real(kind=sgl),allocatable              :: batchpatterns32(:,:,:), batchpatterns32lin(:,:)
++        integer(kind=irg),allocatable           :: acc_array(:,:)
++        real(kind=sgl),allocatable              :: master_arrayNH(:,:), master_arraySH(:,:), wf(:)
++        character(len=3)                        :: outputformat
++        character(fnlen, KIND=c_char),allocatable,TARGET :: stringarray(:)
++
++        ! parameter for random number generator
++        integer, parameter                      :: K4B=selected_int_kind(9)      ! used by ran function in math.f90
++        integer(K4B)                            :: idum
++
++        integer(HSIZE_T)                        :: dims3(3)
++        logical                                 :: verbose
++        character(5)                            :: bitmode
++        integer(kind=irg)                       :: numbits
++        real(kind=sgl)                          :: bitrange, q_c(numangles,4)
++
++        ! new stuff: deformation tensor
++        real(kind=dbl)                          :: Umatrix(3,3), Fmatrix(3,3), Smatrix(3,3), quF(4), Fmatrix_inverse(3,3), &
++                                                   Gmatrix(3,3)
++        logical                                 :: includeFmatrix=.FALSE.
++        type(C_PTR)                                         :: HPplanf, HPplanb
++        complex(kind=dbl),allocatable                       :: hpmask(:,:)
++        complex(C_DOUBLE_COMPLEX),pointer                   :: inp(:,:), outp(:,:)
++        type(c_ptr), allocatable                            :: ip, op
++        real(kind=dbl),allocatable                          :: rrdata(:,:), ffdata(:,:)
++
++
++        ! binned pattern array
++        binx = enl%numsx/enl%binning
++        biny = enl%numsy/enl%binning
++        recordsize = 4 * binx * biny
++         ! convert the pc back to units of pixels
++        do iang=1,numangles
++           if (enl%applyDeformation.eq.'y') then
++              X_value(iang, 4:12)=value(iang, 4:12)
++            else
++              X_value(iang, 4:6)=value(iang, 4:6)
++            end if
++
++          if (enl%eulerconvention.eq.'hkl') then
++              X_value(iang, 1:3)=(/-enl%numsx*(value(iang,1)-0.5), &
++              enl%numsy*(value(iang,2)-0.5), enl%numsx*value(iang,3)*enl%delta/)
++
++              if (patterndata%inputtype.eq.'BrukerHDF') X_value(iang, 1:3)= &
++              (/-enl%numsx*(value(iang,1)-0.5),enl%numsy*(0.5-value(iang,2)), enl%numsy*value(iang,3)*enl%delta/)
++
++          elseif (enl%eulerconvention.eq.'tsl') then
++              X_value(iang, 1:3)=(/-enl%numsx*(value(iang,1)-0.5), &
++              enl%numsx*value(iang,2)-0.5*enl%numsy, enl%numsx*value(iang,3)*enl%delta/)
++          else
++            print *, "Undefined Euler Convention"
++          end if
++        end do
++
++        call RotationCorrection(q_c, enl%applyDeformation,enl%delta, enl%thetac, st_initial, X_value, Dim_XC, numangles)
++
++        call h5open_EMsoft(hdferr)
++
++        istats = openExpPatternFile(enl%targetfile, patterndata%ipf_wd, binx * biny, &
++        patterndata%inputtype, recordsize, iunitexpt, patterndata%HDFstrings, verbose=.FALSE.)
++        if (istats.ne.0) then
++            call patternmod_errormessage(istats)
++            call FatalError("Read Pattern Routine:","Fatal error handling experimental pattern file")
++        end if
++        ! and read the pattern from target pattern file
++        allocate(targetpattern(enl%numsx * enl%numsy))
++        dims3 = (/ binx, biny, 1 /)
++        call getSingleExpPattern(patterndata%paty, patterndata%ipf_wd, binx * biny, &
++        binx * biny, dims3, offset3, iunitexpt, patterndata%inputtype, patterndata%HDFstrings, targetpattern)
++
++        ! binning the experimental pattern
++        allocate(EBSDpattern(enl%numsx, enl%numsy), binned(binx, biny),stat=istat)
++        if (enl%binning.ne.1) then
++          EBSDpattern = reshape(targetpattern,(/enl%numsx , enl%numsy/))
++          deallocate(targetpattern)
++          allocate(targetpattern(binx*biny))
++          do ii=1,enl%numsx,enl%binning
++            do jj=1,enl%numsy,enl%binning
++                binned(ii/enl%binning+1,jj/enl%binning+1) = &
++                sum(EBSDpattern(ii:ii+enl%binning-1,jj:jj+enl%binning-1))
++            end do
++          end do
++          targetpattern=reshape(binned,(/binx*biny/))
++        end if
++        deallocate(EBSDpattern, binned)
++
++        if (enl%makedictionary.eq.'y') then
++        ! high pass filter and adaptive histogram equalization
++        allocate(hpmask(binx,biny),stat=istat)
++        if (istat .ne. 0) stop 'could not allocate hpmask, inp, outp arrays'
++        allocate(rrdata(binx,biny),ffdata(binx,biny),stat=istat)
++        if (istat .ne. 0) stop 'could not allocate rrdata, ffdata arrays'
++        allocate(bpatint(binx,biny),binned(binx,biny),stat=istat)
++
++        ip = fftw_alloc_complex(int(binx*biny,C_SIZE_T))
++        call c_f_pointer(ip, inp, [binx,biny])
++
++        op = fftw_alloc_complex(int(binx*biny,C_SIZE_T))
++        call c_f_pointer(op, outp, [binx,biny])
++
++        inp = cmplx(0.D0,0D0)
++        outp = cmplx(0.D0,0.D0)
++
++        call init_HiPassFilter(dble(enl%hipassw), (/binx, biny /), hpmask, inp, outp, HPplanf, HPplanb)
++
++        binned = reshape(targetpattern,(/binx , biny/))
++        rrdata = dble(binned)
++        ffdata = applyHiPassFilter(rrdata, (/ binx, biny /), dble(enl%hipassw), hpmask, inp, outp, HPplanf, HPplanb)
++        binned = sngl(ffdata)
++
++        ma = maxval(binned)
++        mi = minval(binned)
++
++        bpatint = nint(((binned - mi) / (ma-mi))*255.0)
++
++        binned = float(adhisteq(enl%nregions,binx,biny,bpatint))
++        targetpattern = reshape(binned ,(/binx*biny/))
++
++        deallocate(bpatint, binned, rrdata, ffdata, hpmask)
++        call fftw_free(ip)
++        call fftw_free(op)
++        call fftw_cleanup()
++        end if
++
++        call closeExpPatternFile(patterndata%inputtype, iunitexpt)
++        call h5close_EMsoft(hdferr)
++
++        !====================================
++        !====================================
++        ! bit depth and format of output
++
++        call get_bit_parameters(enl%bitdepth, numbits, bitrange, bitmode)
++
++        if (enl%makedictionary.eq.'y') bitmode = 'dict'
++        ! define some energy-related parameters derived from MC input parameters
++        !====================================
++        ! make sure the requested energy range is within the range available from the Monte Carlo computation
++        if (enl%energymin.lt.mcnl%Ehistmin) enl%energymin = mcnl%Ehistmin
++        if (enl%energymax.gt.mcnl%EkeV) enl%energymax = mcnl%EkeV
++
++        ! get the indices of the minimum and maximum energy
++        Emin = nint((enl%energymin - mcnl%Ehistmin)/mcnl%Ebinsize) +1
++        if (Emin.lt.1)  Emin=1
++        if (Emin.gt.EBSDMCdata%numEbins)  Emin=EBSDMCdata%numEbins
++
++        Emax = nint((enl%energymax - mcnl%Ehistmin)/mcnl%Ebinsize) +1
++        if (Emax.lt.1)  Emax=1
++        if (Emax.gt.EBSDMCdata%numEbins)  Emax=EBSDMCdata%numEbins
++
++        ! modified by MDG, 03/26/18
++        nel = float(mcnl%totnum_el) * float(EBSDMCdata%multiplier)
++        emult = nAmpere * 1e-9 / nel  ! multiplicative factor to convert MC data to an equivalent incident beam of 1 nanoCoulomb
++        !write (*,*) ' multiplicative factor to generate 1 nC of incident electrons ', emult
++
++        ! and allocate space to store each batch; this requires some careful analysis
++        ! since we are doing things in multiple threads
++          nthreads = enl%nthreads
++          L = binx*biny
++          ! make sure that correctsize is a multiple of 16; if not, make it so
++          if (mod(L,16) .ne. 0) then
++              correctsize = 16*ceiling(float(L)/16.0)
++          else
++              correctsize = L
++          end if
++
++        ! and allocate the batchpatterns array for hyperslab writing [modified 8/25/17 for different output formats]
++        if (trim(bitmode).eq.'char') then
++          allocate(batchpatterns(binx,biny,numangles),stat=istat)
++        end if
++        if (trim(bitmode).eq.'int') then
++          allocate(batchpatternsint(binx,biny,numangles),stat=istat)
++        end if
++        if (trim(bitmode).eq.'float') then
++          allocate(batchpatterns32(binx,biny,numangles),stat=istat)
++        end if
++        if (trim(bitmode).eq.'dict') then
++          allocate(batchpatterns32lin(correctsize,numangles),stat=istat)
++        end if
++        !====================================
++        ! here we also create a mask if necessary
++          allocate(mask(binx,biny), masklin(L), stat=istat)
++          mask = 1.0
++          masklin = 1.0
++          if (enl%maskpattern.eq.'y') then
++        ! create the circular mask in a potentially rectangular array
++            maskradius = (minval( (/ binx, biny /) ) / 2 )**2
++            allocate(lx(binx), ly(biny), stat=istat)
++            lx = (/ (float(i),i=1,binx) /) - float(binx/2)
++            ly = (/ (float(i),i=1,biny) /) - float(biny/2)
++            do i=1,binx
++              do j=1,biny
++                if ((lx(i)**2+ly(j)**2).gt.maskradius) mask(i,j) = 0.0
++              end do
++            end do
++            deallocate(lx, ly)
++            if (trim(bitmode).eq.'dict') then
++              do j = 1,biny
++                do i = 1,binx
++                  masklin((j-1)*binx+i) = mask(i,j)
++                end do
++              end do
++            end if
++          end if
++        ! apply mask on the experimental pattern
++        targetpattern(1:L)=masklin(1:L) * targetpattern(1:L)
++        !====================================
++        ! determine the scale factor for the Lambert interpolation
++        scl = dble(mpnl%npx)
++
++        !====================================
++        ! define the integer parameter list for the CalcEBSDPatternSingleFull call
++        ipar(1) = enl%binning
++        ipar(2) = enl%numsx
++        ipar(3) = enl%numsy
++        ipar(4) = mpnl%npx
++        ipar(5) = mpnl%npx
++        ipar(6) = EBSDMCdata%numEbins
++        ipar(7) = EBSDMCdata%numEbins
++
++        !====================================
++        ! set the number of OpenMP threads
++        call OMP_SET_NUM_THREADS(nthreads)
++
++        !====================================
++        !====================================
++
++        ! use OpenMP to run on multiple cores ...
++        !$OMP PARALLEL default(shared)  PRIVATE(iang,i,j,istat,EBSDpattern,binned,idum,bpat,ma,mi,bpatint)&
++        !$OMP& PRIVATE(tmLPNH, tmLPSH, trgx, trgy, trgz, taccum, prefactor)&
++        !$OMP& PRIVATE(Fmatrix_inverse, nel, Fmatrix, binnedvec)
++
++        ! each thread needs a private copy of the master and accum arrays; not having
++        ! those can produce poor scaling... in addition, they need to be recomputed for each pattern !
++          allocate(trgx(enl%numsx,enl%numsy), trgy(enl%numsx,enl%numsy), trgz(enl%numsx,enl%numsy))
++          allocate(taccum(EBSDMCdata%numEbins,enl%numsx,enl%numsy))
++          allocate(tmLPNH(enl%numsx,enl%numsy,EBSDMCdata%numEbins), tmLPSH(enl%numsx,enl%numsy,EBSDMCdata%numEbins))
++        ! and copy the data in
++          tmLPNH = EBSDMPdata%mLPNH
++          tmLPSH = EBSDMPdata%mLPSH
++
++        ! allocate the arrays that will hold the computed pattern
++          allocate(binned(binx,biny),stat=istat)
++          if (trim(bitmode).eq.'char') then
++            allocate(bpat(binx,biny),stat=istat)
++          end if
++          if (trim(bitmode).eq.'int') then
++            allocate(bpatint(binx,biny),stat=istat)
++          end if
++          if (trim(bitmode).eq.'dict') then
++            allocate(bpatint(binx,biny),stat=istat)
++            allocate(binnedvec(correctsize),stat=istat)
++          end if
++
++         !$OMP DO SCHEDULE(DYNAMIC)
++          do iang=1,numangles
++              if (enl%applyDeformation.eq.'y') then
++              includeFmatrix = .TRUE.
++        ! invert the transposed deformation tensor for this pattern
++
++              Fmatrix = real(transpose(reshape(X_value(iang,4:12),(/ 3,3 /))),kind=dbl)
++              call mInvert(Fmatrix, Fmatrix_inverse, .FALSE.)
++            end if
++
++        ! for each pattern we need to compute the detector arrays
++            if (enl%includebackground.eq.'y') then
++              call GeneratemyEBSDDetector(enl, mcnl, EBSDMCdata, enl%numsx, enl%numsy, EBSDMCdata%numEbins, &
++                                          trgx, trgy, trgz, taccum, X_value(iang,1:3),bg=.TRUE.)
++        ! intensity prefactor
++              prefactor = emult * enl%beamcurrent * enl%dwelltime * 1.0D-6
++            else
++              call GeneratemyEBSDDetector(enl, mcnl, EBSDMCdata, enl%numsx, enl%numsy, EBSDMCdata%numEbins, &
++                                          trgx, trgy, trgz, taccum, X_value(iang,1:3),bg=.FALSE.)
++        ! we pick a reasonable value here ...
++              prefactor = 3.D0 * enl%beamcurrent * enl%dwelltime * 1.0D-6
++            end if
++
++            binned = 0.0
++
++            if (includeFmatrix.eqv..TRUE.) then
++             if (enl%includebackground.eq.'y') then
++              call CalcEBSDPatternSingleFull(ipar,q_c(iang,1:4),taccum,tmLPNH,tmLPSH,trgx,trgy,trgz,binned, &
++                                             Emin,Emax,mask,prefactor,Fmatrix_inverse)
++             else
++              call CalcEBSDPatternSingleFull(ipar,q_c(iang,1:4),taccum,tmLPNH,tmLPSH,trgx,trgy,trgz,binned, &
++                                             Emin,Emax,mask,prefactor,Fmatrix_inverse,removebackground='y')
++             end if
++            else
++             if (enl%includebackground.eq.'y') then
++              call CalcEBSDPatternSingleFull(ipar,q_c(iang,1:4),taccum,tmLPNH,tmLPSH,trgx,trgy,trgz,binned, &
++                                             Emin,Emax,mask,prefactor)
++             else
++              call CalcEBSDPatternSingleFull(ipar,q_c(iang,1:4),taccum,tmLPNH,tmLPSH,trgx,trgy,trgz,binned, &
++                                             Emin,Emax,mask,prefactor,removebackground='y')
++             end if
++            end if
++
++            if (enl%scalingmode .eq. 'gam') then
++                binned = binned**enl%gammavalue
++            end if
++
++            if (trim(bitmode).eq.'dict') then  ! pre-process the patterns for dictionary indexing
++              ! this step includes adaptive histogram equalization, masking, and normalization
++
++              ! adaptive histogram equalization
++                      ma = maxval(binned)
++                      mi = minval(binned)
++                      bpatint = nint(((binned - mi)/ (ma-mi))*255.0)
++                      binned =  float(adhisteq(enl%nregions,binx,biny,bpatint))
++
++              ! linearize the array and apply the mask
++                      binnedvec = 0.0
++                      do j= 1,biny
++                        do i = 1,binx
++                          binnedvec((j-1)*binx+i) = binned(i,j)
++                        end do
++                      end do
++              ! apply circular mask and normalize
++                      binnedvec(1:L) = binnedvec(1:L) * masklin(1:L)
++                      binnedvec(1:correctsize) = binnedvec(1:correctsize)/vecnorm(binnedvec(1:correctsize))
++
++              ! store in array for hyperslab writing
++                      batchpatterns32lin(1:correctsize, iang) = binnedvec
++            else
++              if (trim(bitmode).eq.'char') then
++                ma = maxval(binned)
++                mi = minval(binned)
++                binned = mask * ((binned - mi)/ (ma-mi))
++                bpat = char(nint(bitrange*binned))
++                batchpatterns(1:binx,1:biny, iang) = bpat
++              end if
++
++              if (trim(bitmode).eq.'int') then
++                ma = maxval(binned)
++                mi = minval(binned)
++                binned = mask * ((binned - mi)/ (ma-mi))
++                bpatint = nint(bitrange*binned)
++                batchpatternsint(1:binx,1:biny, iang) = bpatint
++              end if
++
++              if (trim(bitmode).eq.'float') then
++                batchpatterns32(1:binx,1:biny, iang) = binned
++              end if
++            end if
++
++          end do ! end of iang loop
++
++          !$OMP END DO
++
++          ! deallocate arrays to free memory
++          deallocate(tmLPSH)
++          deallocate(tmLPNH)
++          deallocate(taccum)
++          deallocate(trgx)
++          deallocate(trgy)
++          deallocate(trgz)
++          deallocate(binned)
++
++          if (trim(bitmode).eq.'char') then
++            deallocate(bpat)
++           end if
++
++          if (trim(bitmode).eq.'int') then
++            deallocate(bpatint)
++          end if
++
++          if (trim(bitmode).eq.'dict') then
++            deallocate(binnedvec)
++          end if
++
++        !$OMP END PARALLEL
++
++
++        ! Calculate the objective functions values (normalized dot product and root mean square error)
++        ! normalized dot product (NDP)
++        if (objective .eq. 1) then
++          norm_target=norm2(targetpattern)
++          do i=1,numangles
++            if (trim(bitmode).eq.'char') then
++              norm_pattern(i)=norm2(float(reshape(ichar(batchpatterns(:,:,i)),(/ L /))))
++              objval(i)=-dot_product(targetpattern/norm_target, &
++              float(reshape(ichar(batchpatterns(:,:,i)),(/ L /)))/norm_pattern(i))
++            end if
++
++            if (trim(bitmode).eq.'int') then
++              norm_pattern(i)=norm2(float(reshape(batchpatternsint(:,:,i),(/ L /))))
++              objval(i)=-dot_product(targetpattern/norm_target,&
++              float(reshape(batchpatternsint(:,:,i),(/ L /)))/norm_pattern(i))
++            end if
++
++            if (trim(bitmode).eq.'float') then
++              norm_pattern(i)=norm2(reshape(batchpatterns32(:,:,i),(/ L /)))
++              objval(i)=-dot_product(targetpattern/norm_target,&
++              reshape(batchpatterns32(:,:,i),(/ L /))/norm_pattern(i))
++            end if
++
++            if (trim(bitmode).eq.'dict') then
++              norm_pattern(i)=norm2(batchpatterns32lin(:,i))
++              objval(i)=-dot_product(targetpattern/norm_target,&
++              reshape(batchpatterns32lin(:,i),(/ L /))/norm_pattern(i))
++            end if
++          end do
++
++          ! root mean square error (RMSE)
++        else if (objective .eq. 2) then
++          do i=1,numangles
++            if (trim(bitmode).eq.'char') then
++              objval(i)=sqrt(sum((float(reshape(ichar(batchpatterns(:,:,i)),(/ L /)))-targetpattern)**2)/L)
++            end if
++
++            if (trim(bitmode).eq.'int') then
++              objval(i)=sqrt(sum((float(reshape(batchpatternsint(:,:,i),(/ L /)))-targetpattern)**2)/L)
++            end if
++
++            if (trim(bitmode).eq.'float') then
++              objval(i)=sqrt(sum((reshape(batchpatterns32(:,:,i),(/ L /))-targetpattern)**2)/L)
++            end if
++
++            if (trim(bitmode).eq.'dict') then
++              objval(i)=sqrt(sum((reshape(batchpatterns32lin(:,i),(/ L /))-targetpattern)**2)/L)
++            end if
++          end do
++        else
++          print *,"Undefined Objective Function"
++        end if
++
++          ! deallocate arrays
++          deallocate(targetpattern)
++
++          if (trim(bitmode).eq.'char') then
++            deallocate(batchpatterns)
++          end if
++
++          if (trim(bitmode).eq.'int') then
++            deallocate(batchpatternsint)
++          end if
++
++          if (trim(bitmode).eq.'float') then
++            deallocate(batchpatterns32)
++          end if
++
++          if (trim(bitmode).eq.'dict') then
++            deallocate(batchpatterns32lin)
++          end if
++    end subroutine objective_function
++
++  subroutine RotationCorrection(q_c, Fmatrix,delta, thetac, st_initial, X_value, Dim_XC, numangles)
++
++  use quaternions
++  use rotations
++  use constants
++
++  IMPLICIT NONE
++
++  integer(kind=irg),INTENT(IN)                        :: numangles, Dim_XC
++  real(kind=sgl),dimension(3),INTENT(IN)              :: st_initial
++  real(kind=sgl), dimension(numangles, Dim_XC), intent(in)   :: X_value
++  real(kind=sgl),intent(in)                           :: delta, thetac
++  real(kind=sgl), intent(out)                         :: q_c(numangles,4)
++
++  integer(kind=irg)                                   :: i
++  character(len=1)                                    :: Fmatrix
++  real(kind=dbl)                                      :: qu(4), delta_pc(3),a,rho_c,w,n(3),r(4)
++
++
++  if (Fmatrix.eq.'y') then
++    do i=1,numangles
++
++      q_c(i,:)=st2qu(st_initial)
++
++    end do
++
++  else
++  do i=1,numangles
++  r=st2qu(X_value(i,4:6))
++  ! delta_pc=(/-(X_value(i,1)-pc_initial(1)),-(X_value(i,2)-pc_initial(2)), X_value(i,3)/)
++  ! ! sample tilt 20 degrees + detector tilt (rad)
++  ! a=((thetac+20.0)*cPi)/180.0
++  ! rho_c=sqrt(delta_pc(1)**2+(delta_pc(2)*cos(2*a))**2)
++  ! n=(/-delta_pc(1)*cos(a),delta_pc(2)*cos(2*a),delta_pc(1)*sin(a)/)/rho_c
++  ! w=dacos((delta_pc(3)+delta_pc(2)*delta*sin(2*a))/sqrt(delta_pc(3)**2+ &
++  ! 2*delta_pc(3)*delta_pc(2)*delta*sin(2*a)+(delta_pc(1)*delta)**2+(delta_pc(2)*delta)**2))
++  ! r=ax2qu((/n(1),n(2),n(3), w/))
++  ! q_c(:,i)=quat_mult(r,qu)
++  qu=st2qu(st_initial)
++  q_c(i,:)=quat_mult(r,qu)
++  end do
++  end if
++  end subroutine RotationCorrection
++
++end module PSOmod
+diff --git a/Source/EMsoftLib/CMakeLists.txt b/Source/EMsoftLib/CMakeLists.txt
+index 81a5455..fbd9d0e 100644
+--- a/Source/EMsoftLib/CMakeLists.txt
++++ b/Source/EMsoftLib/CMakeLists.txt
+@@ -120,7 +120,6 @@ set(EMsoftLib_SRCS
+   ${EMsoftLib_SOURCE_DIR}/DSHT.f90
+   ${EMsoftLib_SOURCE_DIR}/fft_wrap.f90
+   ${EMsoftLib_SOURCE_DIR}/ISEmod.f90
+-  ${EMsoftLib_SOURCE_DIR}/PSOmod.f90
+ 
+   ${EMsoftLib_Additional_SRCS}
+ )
+diff --git a/Source/EMsoftLib/PSOmod.f90 b/Source/EMsoftLib/PSOmod.f90
+deleted file mode 100644
+index fbcc23c..0000000
+--- a/Source/EMsoftLib/PSOmod.f90
++++ /dev/null
+@@ -1,234 +0,0 @@
+-! ###################################################################
+-! Copyright (c) 2013-2022, Marc De Graef Research Group/Carnegie Mellon University
+-! All rights reserved.
+-!
+-! Redistribution and use in source and binary forms, with or without modification, are
+-! permitted provided that the following conditions are met:
+-!
+-!     - Redistributions of source code must retain the above copyright notice, this list
+-!        of conditions and the following disclaimer.
+-!     - Redistributions in binary form must reproduce the above copyright notice, this
+-!        list of conditions and the following disclaimer in the documentation and/or
+-!        other materials provided with the distribution.
+-!     - Neither the names of Marc De Graef, Carnegie Mellon University nor the names 
+-!        of its contributors may be used to endorse or promote products derived from 
+-!        this software without specific prior written permission.
+-!
+-! THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
+-! AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+-! IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+-! ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
+-! LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL 
+-! DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+-! SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+-! CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, 
+-! OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE 
+-! USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-! ###################################################################
+-!--------------------------------------------------------------------------
+-! EMsoft:PSOmod.f90
+-!--------------------------------------------------------------------------
+-!
+-! Module: PSOmod
+-!
+-!> @author Chaoyi Zhu/Marcus Ochsendorf/Marc De Graef, Carnegie Mellon University
+-!
+-!> @brief Global Optimization for Pattern Center, Orientation, and 
+-! Deformation using Dynamical EBSD patterns
+-!
+-!> @date  09/15/20  CZ 1.0 
+-! ###################################################################
+-
+-module PSO
+-    implicit none
+-
+-    ! the object that stores all relevant parameters of optimization
+-    type particle
+-        real(kind=4), dimension(:), allocatable :: parameters
+-        real(kind=4), dimension(:), allocatable :: velocity
+-        real(kind=4), dimension(:), allocatable :: best_parameters
+-        real(kind=4) :: best_cost,current_cost
+-    end type particle 
+-    
+-contains
+-
+-    recursive subroutine particle_init(part, num_parameters,min,max)
+-        ! initializes the particles 
+-        use, intrinsic :: ISO_Fortran_env
+-        implicit none
+-        type (particle) :: part
+-        integer ,intent(in) ::  num_parameters
+-        real(kind=4), dimension(num_parameters), intent(in) :: min,max
+-        real(kind=4) :: diff
+-        integer(kind=4) :: i
+-        real(kind=4), dimension(:), allocatable :: rand
+-
+-        ! Initialization of the random number generation
+-        allocate(rand(num_parameters)) 
+-        call random_number(rand)
+-        
+-        do i=1,num_parameters
+-            diff = max(i) - min(i)
+-            rand(i) = min(i) + diff*rand(i)
+-        end do
+-        
+-        ! Initialization of the particle object
+-        allocate(part%parameters(num_parameters))
+-        allocate(part%velocity(num_parameters))
+-        allocate(part%best_parameters(num_parameters))
+-
+-        part%best_cost = HUGE(1.0)
+-        part%current_cost = HUGE(1.0)
+-        part%parameters = rand 
+-        part%best_parameters = rand 
+-
+-        do i=1,num_parameters
+-            part%velocity(i) = 0
+-        end do
+-    
+-    end subroutine particle_init
+-
+-    subroutine swarm_init(swarm, num_param, minimum, maximum)
+-        ! intializes the swarm by generating the initial guesses for the optimization problem
+-        implicit none
+-        type (particle), dimension(:), intent(inout) :: swarm
+-        integer, intent(in) :: num_param 
+-        real(kind=4), dimension(num_param), intent(in) :: minimum, maximum
+-        integer :: i   
+-
+-        do i=1,size(swarm)
+-            call particle_init(swarm(i),num_param,min = minimum, max=maximum)
+-        end do
+-
+-    end subroutine swarm_init
+-
+-   subroutine swarm_init_single(swarm, num_param, minimum, maximum)
+-        ! intializes the swarm by generating the initial guesses for the optimization problem
+-        implicit none
+-        type (particle), intent(inout) :: swarm
+-        integer, intent(in) :: num_param 
+-        real(kind=4), dimension(num_param), intent(in) :: minimum, maximum
+-        call particle_init(swarm,num_param,min = minimum, max=maximum)
+-        
+-    end subroutine swarm_init_single
+-
+-    recursive subroutine print_particle(part)
+-        ! prints all of the variables stored within a particle object
+-        implicit none
+-        type (particle),intent(in) :: part
+-        write(*,*)
+-        print *, "The current parameters of this particle are: "
+-        print *, part%parameters
+-        print *, "The best parameters this particle found are: "
+-        print *, part%best_parameters
+-        print *, "The current velocity of this particle is: "
+-        print *, part%velocity
+-        print *, "The current cost of the particle is: "
+-        print *, part%current_cost
+-        print *, "The best cost that this particle found is: "
+-        print *, part%best_cost
+-    
+-    end subroutine print_particle
+-
+-    recursive subroutine random_init()
+-        ! set the seed for random number generation
+-        implicit none
+-        integer(kind=4) :: i,n,clock
+-        integer(kind=4) , dimension(:), allocatable :: seed
+-
+-        call random_seed(size = n)
+-        allocate(seed(n))
+-        call system_clock(count = clock)
+-        seed = clock + 37*(/(i-1,i=1,n)/)
+-        call random_seed(put =seed)
+-        deallocate(seed)
+-    
+-    end subroutine random_init
+-
+-
+-
+-  subroutine find_min(swarm, best, w, w_damp, c1, c2, Dim_XC, st_initial,de,&
+-     mcnl, mpnl, EBSDMCdata, EBSDMPdata, patterndata, enl, offset3, minimum, maximum)
+-        use local
+-        use typedefs
+-        use NameListTypedefs
+-        use HDF5
+-       
+-        
+-        IMPLICIT NONE
+-        type(MCCLNameListType),intent(inout)                           :: mcnl
+-        type(EBSDMasterNameListType),intent(inout)                     :: mpnl
+-        type(EBSDMCdataType),intent(inout)                             :: EBSDMCdata
+-        type(EBSDMPdataType),intent(inout)                             :: EBSDMPdata
+-        type(EBSDDIpreviewNameListType),INTENT(INOUT)       :: patterndata
+-        type(EBSDNameListType),INTENT(INOUT)                :: enl
+-        type(EBSDDENameListType),INTENT(INOUT)              :: de
+-        integer(kind=4),INTENT(IN)                        :: Dim_XC
+-        integer(HSIZE_T),intent(in)                         :: offset3(3)
+-        real(kind=4),dimension(3),INTENT(IN)              ::  st_initial
+-        type (particle), dimension(:), intent(inout)  :: swarm
+-        real(kind=4), dimension(Dim_XC), intent(in)  :: minimum, maximum
+-        type (particle), intent(inout) :: best
+-        real(kind=4), intent(inout) :: w 
+-        real(kind=4), intent(in) :: w_damp, c1, c2
+-        real(kind=4) :: v_ideal, v_ave, v_start, maxVelocity(Dim_XC), minVelocity(Dim_XC)
+-        real(kind=4) :: value(size(swarm),Dim_XC), rand_step_1, rand_step_2, objval(size(swarm))
+-        
+-        integer :: i,j,k,s,iter, iloc
+-        
+-        iter=1
+-        v_start=0.0
+-        maxVelocity=0.1*(maximum-minimum)
+-        minVelocity=-maxVelocity
+-
+-        do i=1, de%itermax
+-                value=0.0              
+-            do j=1,size(swarm)
+-                call random_number(rand_step_1)
+-                call random_number(rand_step_2)
+-                swarm(j)%velocity = de%w*swarm(j)%velocity + de%c1*rand_step_1*(best%parameters - swarm(j)%parameters) &
+-                & + de%c2*rand_step_2*(swarm(j)%best_parameters -swarm(j)%parameters)
+-                swarm(j)%parameters = swarm(j)%parameters + swarm(j)%velocity
+-                ! Confine invidual particle velocity in the lower-upper bound
+-                swarm(j)%velocity =max(min(swarm(j)%velocity,maxVelocity),minVelocity)
+-                ! Confine invidual particle in the lower-upper bound
+-                swarm(j)%parameters=max(min(swarm(j)%parameters,maximum),minimum)
+-                value(j,1:Dim_XC)=swarm(j)%parameters
+-            end do
+-
+-            call objective_function(offset3, value, st_initial, objval, Dim_XC, &
+-            enl, patterndata, size(swarm), de%objective, mcnl, mpnl, EBSDMCdata, EBSDMPdata)
+-            
+-            ! updates the inertia weight
+-            de%w = de%w*de%w_damp  
+-          
+-            do k=1,size(swarm)
+-              swarm(k)%current_cost=objval(k)
+-              if (swarm(k)%best_cost > swarm(k)%current_cost) then
+-                swarm(k)%best_cost = swarm(k)%current_cost
+-                swarm(k)%best_parameters = swarm(k)%parameters      
+-              end if
+-            end do
+-            iloc=minloc(objval,1)
+-            best = swarm(iloc)
+-            iter=iter+1
+-
+-            if( (de%refresh > 0) .and. (mod(iter,de%refresh)==0)) then
+-              write(*,*)
+-              print *,"# Iteration:",iter,": Objective function value:", best%best_cost 
+-              print *,"# Best Member:", best%best_parameters
+-            end if
+-
+-            ! end if best fitness if smaller than expected value to reach
+-            if ( best%best_cost  <= de%VTR ) then
+-              print *,"# The best fitness", best%best_cost , "is smaller than VTR at generation #", iter
+-              print *,"# Best Member:", best%best_parameters
+-              exit
+-            end if
+-            end do
+-            
+-
+-    end subroutine find_min
+-    
+-
+-end module PSO
+diff --git a/Source/SEM/EMEBSDGlobalOpt.f90 b/Source/SEM/EMEBSDGlobalOpt.f90
+index 25246aa..e655686 100644
+--- a/Source/SEM/EMEBSDGlobalOpt.f90
++++ b/Source/SEM/EMEBSDGlobalOpt.f90
+@@ -57,7 +57,7 @@ program EMEBSDGlobalOpt
+     use patternmod
+     use NameListHDFwriters
+     use omp_lib
+-    use PSO
++    use PSOmod
+     use timing
+     use quaternions
+ 
+@@ -482,6 +482,7 @@ use HDFsupport
+ use error
+ use detectors
+ use EBSDmod
++use PSOmod
+ use stringconstants
+ use omp_lib
+ 
+@@ -676,571 +677,6 @@ end do
+ !!------end the evolutionary computation------------------------------!!
+ end subroutine DE_Fortran90
+ 
+-subroutine objective_function(offset3, value,st_initial, objval, &
+-  Dim_XC, enl, patterndata, numangles, objective, mcnl, mpnl, EBSDMCdata, EBSDMPdata)
+-    use local
+-    use typedefs
+-    use NameListTypedefs
+-    use NameListHDFwriters
+-    use symmetry
+-    use crystal
+-    use constants
+-    use io
+-    use files
+-    use diffraction
+-    use detectors
+-    use EBSDmod
+-    use Lambert
+-    use quaternions
+-    use rotations
+-    use noise
+-    use HDF5
+-    use HDFsupport
+-    use ISO_C_BINDING
+-    use omp_lib
+-    use timing
+-    use stringconstants
+-    use math
+-    use filters
+-    use patternmod
+-    use error
+-    use image
+-    use FFTW3mod
+-    use, intrinsic :: iso_fortran_env
+-    
+-    IMPLICIT NONE
+-    
+-    
+-    type(EBSDNameListType),INTENT(INOUT)                :: enl
+-    type(EBSDDIpreviewNameListType),INTENT(INOUT)       :: patterndata
+-    integer(kind=irg),INTENT(IN)                        :: numangles, Dim_XC, objective
+-    real(kind=sgl),dimension(3),INTENT(IN)              :: st_initial
+-    real(kind=sgl), dimension(numangles, Dim_XC), intent(in)   :: value
+-    real(kind=sgl), dimension(numangles),INTENT(OUT)    :: objval
+-    integer(HSIZE_T),intent(in)                         :: offset3(3)
+-    type(MCCLNameListType),intent(inout)                :: mcnl
+-    type(EBSDMasterNameListType),intent(inout)          :: mpnl
+-    type(EBSDMCdataType),intent(inout)                  :: EBSDMCdata
+-    type(EBSDMPdataType),intent(inout)                  :: EBSDMPdata
+-    
+-    ! all geometrical parameters and filenames
+-    real(kind=dbl)                          :: prefactor, qz(3)
+-    real(kind=sgl), dimension(numangles, Dim_XC)  :: X_value
+-    ! allocatable arrays
+-    real(kind=sgl),allocatable              :: EBSDpattern(:,:), binned(:,:)        ! array with EBSD patterns
+-    real(kind=sgl),allocatable              :: z(:,:)               ! used to store the computed patterns before writing to disk
+-    real(kind=sgl),allocatable              :: energywf(:), eulerangles(:,:)
+-    
+-    ! arrays for each OpenMP thread
+-    real(kind=sgl),allocatable              :: tmLPNH(:,:,:) , tmLPSH(:,:,:)
+-    real(kind=sgl),allocatable              :: trgx(:,:), trgy(:,:), trgz(:,:)          ! auxiliary detector arrays needed for interpolation
+-    real(kind=sgl),allocatable              :: taccum(:,:,:)
+-    
+-    ! various items
+-    integer(kind=irg)                       :: i, j, ii, jj, iang, jang, k, hdferr, dim2, recordsize         ! various counters
+-    integer(kind=irg)                       :: iunitexpt, istat, istats, ipar(7), L, correctsize
+-    integer(kind=irg)                       :: nix, niy, binx, biny, nixp, niyp     ! various parameters
+-    integer(kind=irg)                       :: nthreads,maskradius
+-    real(kind=sgl)                          :: norm_target,norm_pattern(numangles)
+-    real(kind=sgl)                          :: ma, mi, tstart, tstop, io_real(3),temp_objval, max_p
+-    real(kind=sgl),parameter                :: dtor = 0.0174533  ! convert from degrees to radians
+-    real(kind=dbl),parameter                :: nAmpere = 6.241D+18   ! Coulomb per second
+-    integer(kind=irg),parameter             :: storemax = 20        ! number of EBSD patterns stored in one output block
+-    integer(kind=irg)                       :: Emin, Emax      ! various parameters
+-    real(kind=dbl)                          :: dc(3), scl, nel, emult           ! direction cosine array
+-    real(kind=dbl)                          :: sx, dx, dxm, dy, dym, rhos, x         ! various parameters
+-    real(kind=dbl)                          :: ixy(2), tmp
+-    real(kind=sgl),allocatable              :: mask(:,:), masklin(:), lx(:), ly(:), binnedvec(:), targetpattern(:)
+-    character(kind=c_char),allocatable      :: batchpatterns(:,:,:), bpat(:,:)
+-    integer(kind=irg),allocatable           :: batchpatternsint(:,:,:), bpatint(:,:)
+-    real(kind=sgl),allocatable              :: batchpatterns32(:,:,:), batchpatterns32lin(:,:)
+-    integer(kind=irg),allocatable           :: acc_array(:,:)
+-    real(kind=sgl),allocatable              :: master_arrayNH(:,:), master_arraySH(:,:), wf(:) 
+-    character(len=3)                        :: outputformat
+-    character(fnlen, KIND=c_char),allocatable,TARGET :: stringarray(:)
+-    
+-    ! parameter for random number generator
+-    integer, parameter                      :: K4B=selected_int_kind(9)      ! used by ran function in math.f90
+-    integer(K4B)                            :: idum
+-    
+-    integer(HSIZE_T)                        :: dims3(3)
+-    logical                                 :: verbose
+-    character(5)                            :: bitmode
+-    integer(kind=irg)                       :: numbits
+-    real(kind=sgl)                          :: bitrange, q_c(numangles,4)
+-    
+-    ! new stuff: deformation tensor
+-    real(kind=dbl)                          :: Umatrix(3,3), Fmatrix(3,3), Smatrix(3,3), quF(4), Fmatrix_inverse(3,3), &
+-                                               Gmatrix(3,3)
+-    logical                                 :: includeFmatrix=.FALSE.
+-    type(C_PTR)                                         :: HPplanf, HPplanb
+-    complex(kind=dbl),allocatable                       :: hpmask(:,:)
+-    complex(C_DOUBLE_COMPLEX),pointer                   :: inp(:,:), outp(:,:)
+-    type(c_ptr), allocatable                            :: ip, op
+-    real(kind=dbl),allocatable                          :: rrdata(:,:), ffdata(:,:)
+-
+-
+-    ! binned pattern array
+-    binx = enl%numsx/enl%binning
+-    biny = enl%numsy/enl%binning
+-    recordsize = 4 * binx * biny
+-     ! convert the pc back to units of pixels
+-    do iang=1,numangles
+-       if (enl%applyDeformation.eq.'y') then
+-          X_value(iang, 4:12)=value(iang, 4:12)
+-        else 
+-          X_value(iang, 4:6)=value(iang, 4:6)
+-        end if
+-
+-      if (enl%eulerconvention.eq.'hkl') then
+-          X_value(iang, 1:3)=(/-enl%numsx*(value(iang,1)-0.5), &
+-          enl%numsy*(value(iang,2)-0.5), enl%numsx*value(iang,3)*enl%delta/)
+-
+-          if (patterndata%inputtype.eq.'BrukerHDF') X_value(iang, 1:3)= &
+-          (/-enl%numsx*(value(iang,1)-0.5),enl%numsy*(0.5-value(iang,2)), enl%numsy*value(iang,3)*enl%delta/)
+-
+-      elseif (enl%eulerconvention.eq.'tsl') then
+-          X_value(iang, 1:3)=(/-enl%numsx*(value(iang,1)-0.5), &
+-          enl%numsx*value(iang,2)-0.5*enl%numsy, enl%numsx*value(iang,3)*enl%delta/)
+-      else 
+-        print *, "Undefined Euler Convention"
+-      end if
+-    end do
+-  
+-    call RotationCorrection(q_c, enl%applyDeformation,enl%delta, enl%thetac, st_initial, X_value, Dim_XC, numangles) 
+-  
+-    call h5open_EMsoft(hdferr)
+-    
+-    istats = openExpPatternFile(enl%targetfile, patterndata%ipf_wd, binx * biny, &
+-    patterndata%inputtype, recordsize, iunitexpt, patterndata%HDFstrings, verbose=.FALSE.)
+-    if (istats.ne.0) then
+-        call patternmod_errormessage(istats)
+-        call FatalError("Read Pattern Routine:","Fatal error handling experimental pattern file")
+-    end if
+-    ! and read the pattern from target pattern file
+-    allocate(targetpattern(enl%numsx * enl%numsy))
+-    dims3 = (/ binx, biny, 1 /)
+-    call getSingleExpPattern(patterndata%paty, patterndata%ipf_wd, binx * biny, &
+-    binx * biny, dims3, offset3, iunitexpt, patterndata%inputtype, patterndata%HDFstrings, targetpattern)
+-    
+-    ! binning the experimental pattern
+-    allocate(EBSDpattern(enl%numsx, enl%numsy), binned(binx, biny),stat=istat)
+-    if (enl%binning.ne.1) then
+-      EBSDpattern = reshape(targetpattern,(/enl%numsx , enl%numsy/))
+-      deallocate(targetpattern)
+-      allocate(targetpattern(binx*biny))
+-      do ii=1,enl%numsx,enl%binning
+-        do jj=1,enl%numsy,enl%binning
+-            binned(ii/enl%binning+1,jj/enl%binning+1) = &
+-            sum(EBSDpattern(ii:ii+enl%binning-1,jj:jj+enl%binning-1))
+-        end do
+-      end do
+-      targetpattern=reshape(binned,(/binx*biny/))
+-    end if
+-    deallocate(EBSDpattern, binned)
+-    
+-    if (enl%makedictionary.eq.'y') then
+-    ! high pass filter and adaptive histogram equalization
+-    allocate(hpmask(binx,biny),stat=istat)
+-    if (istat .ne. 0) stop 'could not allocate hpmask, inp, outp arrays'
+-    allocate(rrdata(binx,biny),ffdata(binx,biny),stat=istat)
+-    if (istat .ne. 0) stop 'could not allocate rrdata, ffdata arrays'
+-    allocate(bpatint(binx,biny),binned(binx,biny),stat=istat)
+-
+-    ip = fftw_alloc_complex(int(binx*biny,C_SIZE_T))
+-    call c_f_pointer(ip, inp, [binx,biny])
+-
+-    op = fftw_alloc_complex(int(binx*biny,C_SIZE_T))
+-    call c_f_pointer(op, outp, [binx,biny])
+-
+-    inp = cmplx(0.D0,0D0)
+-    outp = cmplx(0.D0,0.D0)
+-    
+-    call init_HiPassFilter(dble(enl%hipassw), (/binx, biny /), hpmask, inp, outp, HPplanf, HPplanb) 
+-    
+-    binned = reshape(targetpattern,(/binx , biny/))
+-    rrdata = dble(binned)
+-    ffdata = applyHiPassFilter(rrdata, (/ binx, biny /), dble(enl%hipassw), hpmask, inp, outp, HPplanf, HPplanb)
+-    binned = sngl(ffdata)
+-
+-    ma = maxval(binned)
+-    mi = minval(binned)
+-
+-    bpatint = nint(((binned - mi) / (ma-mi))*255.0)
+-   
+-    binned = float(adhisteq(enl%nregions,binx,biny,bpatint))
+-    targetpattern = reshape(binned ,(/binx*biny/))
+-
+-    deallocate(bpatint, binned, rrdata, ffdata, hpmask)
+-    call fftw_free(ip)
+-    call fftw_free(op)
+-    call fftw_cleanup()
+-    end if
+-    
+-    call closeExpPatternFile(patterndata%inputtype, iunitexpt)
+-    call h5close_EMsoft(hdferr)
+-    
+-    !====================================
+-    !====================================
+-    ! bit depth and format of output
+-    
+-    call get_bit_parameters(enl%bitdepth, numbits, bitrange, bitmode)
+-
+-    if (enl%makedictionary.eq.'y') bitmode = 'dict'
+-    ! define some energy-related parameters derived from MC input parameters
+-    !====================================
+-    ! make sure the requested energy range is within the range available from the Monte Carlo computation
+-    if (enl%energymin.lt.mcnl%Ehistmin) enl%energymin = mcnl%Ehistmin
+-    if (enl%energymax.gt.mcnl%EkeV) enl%energymax = mcnl%EkeV
+-    
+-    ! get the indices of the minimum and maximum energy
+-    Emin = nint((enl%energymin - mcnl%Ehistmin)/mcnl%Ebinsize) +1
+-    if (Emin.lt.1)  Emin=1
+-    if (Emin.gt.EBSDMCdata%numEbins)  Emin=EBSDMCdata%numEbins
+-    
+-    Emax = nint((enl%energymax - mcnl%Ehistmin)/mcnl%Ebinsize) +1
+-    if (Emax.lt.1)  Emax=1
+-    if (Emax.gt.EBSDMCdata%numEbins)  Emax=EBSDMCdata%numEbins
+-    
+-    ! modified by MDG, 03/26/18
+-    nel = float(mcnl%totnum_el) * float(EBSDMCdata%multiplier)
+-    emult = nAmpere * 1e-9 / nel  ! multiplicative factor to convert MC data to an equivalent incident beam of 1 nanoCoulomb
+-    !write (*,*) ' multiplicative factor to generate 1 nC of incident electrons ', emult
+-    
+-    ! and allocate space to store each batch; this requires some careful analysis
+-    ! since we are doing things in multiple threads
+-      nthreads = enl%nthreads
+-      L = binx*biny
+-      ! make sure that correctsize is a multiple of 16; if not, make it so
+-      if (mod(L,16) .ne. 0) then
+-          correctsize = 16*ceiling(float(L)/16.0)
+-      else
+-          correctsize = L
+-      end if
+-
+-    ! and allocate the batchpatterns array for hyperslab writing [modified 8/25/17 for different output formats]
+-    if (trim(bitmode).eq.'char') then 
+-      allocate(batchpatterns(binx,biny,numangles),stat=istat)
+-    end if
+-    if (trim(bitmode).eq.'int') then 
+-      allocate(batchpatternsint(binx,biny,numangles),stat=istat)
+-    end if
+-    if (trim(bitmode).eq.'float') then 
+-      allocate(batchpatterns32(binx,biny,numangles),stat=istat)
+-    end if
+-    if (trim(bitmode).eq.'dict') then 
+-      allocate(batchpatterns32lin(correctsize,numangles),stat=istat)
+-    end if
+-    !====================================
+-    ! here we also create a mask if necessary
+-      allocate(mask(binx,biny), masklin(L), stat=istat)
+-      mask = 1.0
+-      masklin = 1.0
+-      if (enl%maskpattern.eq.'y') then
+-    ! create the circular mask in a potentially rectangular array
+-        maskradius = (minval( (/ binx, biny /) ) / 2 )**2
+-        allocate(lx(binx), ly(biny), stat=istat)
+-        lx = (/ (float(i),i=1,binx) /) - float(binx/2)
+-        ly = (/ (float(i),i=1,biny) /) - float(biny/2)
+-        do i=1,binx
+-          do j=1,biny
+-            if ((lx(i)**2+ly(j)**2).gt.maskradius) mask(i,j) = 0.0
+-          end do
+-        end do
+-        deallocate(lx, ly)
+-        if (trim(bitmode).eq.'dict') then
+-          do j = 1,biny
+-            do i = 1,binx
+-              masklin((j-1)*binx+i) = mask(i,j)
+-            end do
+-          end do 
+-        end if
+-      end if
+-    ! apply mask on the experimental pattern
+-    targetpattern(1:L)=masklin(1:L) * targetpattern(1:L)
+-    !====================================
+-    ! determine the scale factor for the Lambert interpolation
+-    scl = dble(mpnl%npx) 
+-    
+-    !====================================
+-    ! define the integer parameter list for the CalcEBSDPatternSingleFull call
+-    ipar(1) = enl%binning
+-    ipar(2) = enl%numsx
+-    ipar(3) = enl%numsy
+-    ipar(4) = mpnl%npx
+-    ipar(5) = mpnl%npx
+-    ipar(6) = EBSDMCdata%numEbins
+-    ipar(7) = EBSDMCdata%numEbins
+-    
+-    !====================================
+-    ! set the number of OpenMP threads 
+-    call OMP_SET_NUM_THREADS(nthreads)
+-
+-    !====================================
+-    !====================================
+-
+-    ! use OpenMP to run on multiple cores ... 
+-    !$OMP PARALLEL default(shared)  PRIVATE(iang,i,j,istat,EBSDpattern,binned,idum,bpat,ma,mi,bpatint)&
+-    !$OMP& PRIVATE(tmLPNH, tmLPSH, trgx, trgy, trgz, taccum, prefactor)&
+-    !$OMP& PRIVATE(Fmatrix_inverse, nel, Fmatrix, binnedvec)
+-
+-    ! each thread needs a private copy of the master and accum arrays; not having
+-    ! those can produce poor scaling... in addition, they need to be recomputed for each pattern !
+-      allocate(trgx(enl%numsx,enl%numsy), trgy(enl%numsx,enl%numsy), trgz(enl%numsx,enl%numsy))
+-      allocate(taccum(EBSDMCdata%numEbins,enl%numsx,enl%numsy))
+-      allocate(tmLPNH(enl%numsx,enl%numsy,EBSDMCdata%numEbins), tmLPSH(enl%numsx,enl%numsy,EBSDMCdata%numEbins))
+-    ! and copy the data in
+-      tmLPNH = EBSDMPdata%mLPNH
+-      tmLPSH = EBSDMPdata%mLPSH
+-    
+-    ! allocate the arrays that will hold the computed pattern
+-      allocate(binned(binx,biny),stat=istat)
+-      if (trim(bitmode).eq.'char') then 
+-        allocate(bpat(binx,biny),stat=istat)
+-      end if
+-      if (trim(bitmode).eq.'int') then 
+-        allocate(bpatint(binx,biny),stat=istat)
+-      end if
+-      if (trim(bitmode).eq.'dict') then 
+-        allocate(bpatint(binx,biny),stat=istat)
+-        allocate(binnedvec(correctsize),stat=istat)
+-      end if
+-     
+-     !$OMP DO SCHEDULE(DYNAMIC)
+-      do iang=1,numangles
+-          if (enl%applyDeformation.eq.'y') then
+-          includeFmatrix = .TRUE.
+-    ! invert the transposed deformation tensor for this pattern
+-          
+-          Fmatrix = real(transpose(reshape(X_value(iang,4:12),(/ 3,3 /))),kind=dbl)
+-          call mInvert(Fmatrix, Fmatrix_inverse, .FALSE.)
+-        end if
+-
+-    ! for each pattern we need to compute the detector arrays 
+-        if (enl%includebackground.eq.'y') then
+-          call GeneratemyEBSDDetector(enl, mcnl, EBSDMCdata, enl%numsx, enl%numsy, EBSDMCdata%numEbins, trgx, trgy, trgz, taccum, &
+-                                    X_value(iang,1:3),bg=.TRUE.)
+-    ! intensity prefactor
+-          prefactor = emult * enl%beamcurrent * enl%dwelltime * 1.0D-6
+-        else
+-          call GeneratemyEBSDDetector(enl, mcnl, EBSDMCdata, enl%numsx, enl%numsy, EBSDMCdata%numEbins, trgx, trgy, trgz, taccum, &
+-                                     X_value(iang,1:3),bg=.FALSE.)
+-    ! we pick a reasonable value here ...
+-          prefactor = 3.D0 * enl%beamcurrent * enl%dwelltime * 1.0D-6
+-        end if
+-
+-        binned = 0.0
+-            
+-        if (includeFmatrix.eqv..TRUE.) then 
+-         if (enl%includebackground.eq.'y') then
+-          call CalcEBSDPatternSingleFull(ipar,q_c(iang,1:4),taccum,tmLPNH,tmLPSH,trgx,trgy,trgz,binned, &
+-                                         Emin,Emax,mask,prefactor,Fmatrix_inverse)
+-         else
+-          call CalcEBSDPatternSingleFull(ipar,q_c(iang,1:4),taccum,tmLPNH,tmLPSH,trgx,trgy,trgz,binned, &
+-                                         Emin,Emax,mask,prefactor,Fmatrix_inverse,removebackground='y')
+-         end if
+-        else
+-         if (enl%includebackground.eq.'y') then
+-          call CalcEBSDPatternSingleFull(ipar,q_c(iang,1:4),taccum,tmLPNH,tmLPSH,trgx,trgy,trgz,binned, &
+-                                         Emin,Emax,mask,prefactor)
+-         else
+-          call CalcEBSDPatternSingleFull(ipar,q_c(iang,1:4),taccum,tmLPNH,tmLPSH,trgx,trgy,trgz,binned, &
+-                                         Emin,Emax,mask,prefactor,removebackground='y')
+-         end if
+-        end if
+-
+-        if (enl%scalingmode .eq. 'gam') then
+-            binned = binned**enl%gammavalue
+-        end if
+-
+-        if (trim(bitmode).eq.'dict') then  ! pre-process the patterns for dictionary indexing
+-          ! this step includes adaptive histogram equalization, masking, and normalization
+-          
+-          ! adaptive histogram equalization
+-                  ma = maxval(binned)
+-                  mi = minval(binned)
+-                  bpatint = nint(((binned - mi)/ (ma-mi))*255.0)
+-                  binned =  float(adhisteq(enl%nregions,binx,biny,bpatint))
+-          
+-          ! linearize the array and apply the mask
+-                  binnedvec = 0.0
+-                  do j= 1,biny
+-                    do i = 1,binx
+-                      binnedvec((j-1)*binx+i) = binned(i,j)
+-                    end do
+-                  end do
+-          ! apply circular mask and normalize
+-                  binnedvec(1:L) = binnedvec(1:L) * masklin(1:L)
+-                  binnedvec(1:correctsize) = binnedvec(1:correctsize)/vecnorm(binnedvec(1:correctsize))
+-          
+-          ! store in array for hyperslab writing
+-                  batchpatterns32lin(1:correctsize, iang) = binnedvec
+-        else
+-          if (trim(bitmode).eq.'char') then 
+-            ma = maxval(binned)
+-            mi = minval(binned)
+-            binned = mask * ((binned - mi)/ (ma-mi))
+-            bpat = char(nint(bitrange*binned))
+-            batchpatterns(1:binx,1:biny, iang) = bpat
+-          end if
+-      
+-          if (trim(bitmode).eq.'int') then 
+-            ma = maxval(binned)
+-            mi = minval(binned)
+-            binned = mask * ((binned - mi)/ (ma-mi))
+-            bpatint = nint(bitrange*binned)
+-            batchpatternsint(1:binx,1:biny, iang) = bpatint
+-          end if
+-
+-          if (trim(bitmode).eq.'float') then 
+-            batchpatterns32(1:binx,1:biny, iang) = binned
+-          end if
+-        end if
+-
+-      end do ! end of iang loop
+-     
+-      !$OMP END DO
+-      
+-      ! deallocate arrays to free memory
+-      deallocate(tmLPSH)
+-      deallocate(tmLPNH)
+-      deallocate(taccum)
+-      deallocate(trgx)
+-      deallocate(trgy)
+-      deallocate(trgz)  
+-      deallocate(binned)
+-
+-      if (trim(bitmode).eq.'char') then 
+-        deallocate(bpat)     
+-       end if
+-      
+-      if (trim(bitmode).eq.'int') then 
+-        deallocate(bpatint)
+-      end if
+-
+-      if (trim(bitmode).eq.'dict') then 
+-        deallocate(binnedvec)
+-      end if
+-    
+-    !$OMP END PARALLEL
+-
+-
+-    ! Calculate the objective functions values (normalized dot product and root mean square error)
+-    ! normalized dot product (NDP)
+-    if (objective .eq. 1) then
+-      norm_target=norm2(targetpattern)
+-      do i=1,numangles
+-        if (trim(bitmode).eq.'char') then 
+-          norm_pattern(i)=norm2(float(reshape(ichar(batchpatterns(:,:,i)),(/ L /))))
+-          objval(i)=-dot_product(targetpattern/norm_target, & 
+-          float(reshape(ichar(batchpatterns(:,:,i)),(/ L /)))/norm_pattern(i))
+-        end if
+-      
+-        if (trim(bitmode).eq.'int') then 
+-          norm_pattern(i)=norm2(float(reshape(batchpatternsint(:,:,i),(/ L /))))
+-          objval(i)=-dot_product(targetpattern/norm_target,& 
+-          float(reshape(batchpatternsint(:,:,i),(/ L /)))/norm_pattern(i))
+-        end if
+-      
+-        if (trim(bitmode).eq.'float') then 
+-          norm_pattern(i)=norm2(reshape(batchpatterns32(:,:,i),(/ L /)))
+-          objval(i)=-dot_product(targetpattern/norm_target,& 
+-          reshape(batchpatterns32(:,:,i),(/ L /))/norm_pattern(i))
+-        end if
+-
+-        if (trim(bitmode).eq.'dict') then 
+-          norm_pattern(i)=norm2(batchpatterns32lin(:,i))
+-          objval(i)=-dot_product(targetpattern/norm_target,& 
+-          reshape(batchpatterns32lin(:,i),(/ L /))/norm_pattern(i))
+-        end if
+-      end do
+-
+-      ! root mean square error (RMSE)
+-    else if (objective .eq. 2) then
+-      do i=1,numangles
+-        if (trim(bitmode).eq.'char') then
+-          objval(i)=sqrt(sum((float(reshape(ichar(batchpatterns(:,:,i)),(/ L /)))-targetpattern)**2)/L)
+-        end if
+-
+-        if (trim(bitmode).eq.'int') then
+-          objval(i)=sqrt(sum((float(reshape(batchpatternsint(:,:,i),(/ L /)))-targetpattern)**2)/L)
+-        end if
+-
+-        if (trim(bitmode).eq.'float') then
+-          objval(i)=sqrt(sum((reshape(batchpatterns32(:,:,i),(/ L /))-targetpattern)**2)/L)
+-        end if
+-
+-        if (trim(bitmode).eq.'dict') then
+-          objval(i)=sqrt(sum((reshape(batchpatterns32lin(:,i),(/ L /))-targetpattern)**2)/L)
+-        end if
+-      end do
+-    else
+-      print *,"Undefined Objective Function"
+-    end if
+-      
+-      ! deallocate arrays
+-      deallocate(targetpattern)
+-
+-      if (trim(bitmode).eq.'char') then 
+-        deallocate(batchpatterns) 
+-      end if
+-      
+-      if (trim(bitmode).eq.'int') then 
+-        deallocate(batchpatternsint)
+-      end if
+-      
+-      if (trim(bitmode).eq.'float') then 
+-        deallocate(batchpatterns32)
+-      end if
+-       
+-      if (trim(bitmode).eq.'dict') then 
+-        deallocate(batchpatterns32lin)
+-      end if
+-end subroutine objective_function
+-subroutine RotationCorrection(q_c, Fmatrix,delta, thetac, st_initial, X_value, Dim_XC, numangles) 
+-
+-use quaternions
+-use rotations
+-use constants 
+-
+-IMPLICIT NONE
+-
+-integer(kind=irg),INTENT(IN)                        :: numangles, Dim_XC
+-real(kind=sgl),dimension(3),INTENT(IN)              :: st_initial
+-real(kind=sgl), dimension(numangles, Dim_XC), intent(in)   :: X_value
+-real(kind=sgl),intent(in)                           :: delta, thetac
+-real(kind=sgl), intent(out)                         :: q_c(numangles,4)
+-
+-integer(kind=irg)                                   :: i
+-character(len=1)                                    :: Fmatrix
+-real(kind=dbl)                                      :: qu(4), delta_pc(3),a,rho_c,w,n(3),r(4)
+-
+-
+-if (Fmatrix.eq.'y') then
+-  do i=1,numangles
+-    
+-    q_c(i,:)=st2qu(st_initial)
+-    
+-  end do
+-
+-else
+-do i=1,numangles
+-r=st2qu(X_value(i,4:6))
+-! delta_pc=(/-(X_value(i,1)-pc_initial(1)),-(X_value(i,2)-pc_initial(2)), X_value(i,3)/)
+-! ! sample tilt 20 degrees + detector tilt (rad)
+-! a=((thetac+20.0)*cPi)/180.0
+-! rho_c=sqrt(delta_pc(1)**2+(delta_pc(2)*cos(2*a))**2)
+-! n=(/-delta_pc(1)*cos(a),delta_pc(2)*cos(2*a),delta_pc(1)*sin(a)/)/rho_c
+-! w=dacos((delta_pc(3)+delta_pc(2)*delta*sin(2*a))/sqrt(delta_pc(3)**2+ &
+-! 2*delta_pc(3)*delta_pc(2)*delta*sin(2*a)+(delta_pc(1)*delta)**2+(delta_pc(2)*delta)**2))
+-! r=ax2qu((/n(1),n(2),n(3), w/))
+-! q_c(:,i)=quat_mult(r,qu)
+-qu=st2qu(st_initial)
+-q_c(i,:)=quat_mult(r,qu)
+-end do
+-end if
+-end subroutine RotationCorrection
+-
+ function randperm(num)
+     use local
+     implicit none
+@@ -1273,6 +709,7 @@ enl, patterndata, objective, mcnl, mpnl, EBSDMCdata, EBSDMPdata, icount, numres)
+   use typedefs
+   use NameListTypedefs
+   use HDF5
++  use PSOmod
+ 
+   implicit none
+ 
+@@ -1454,6 +891,7 @@ enl, patterndata, objective, mcnl, mpnl, EBSDMCdata, EBSDMPdata, icount, numres)
+     use typedefs
+     use NameListTypedefs
+     use HDF5
++    use PSOmod
+ 
+     implicit none
+   
+-- 
+2.30.2
+

@@ -1,0 +1,28 @@
+From 5b42ee716a090ce473c8ac5ef5a5c932e0e7f0b7 Mon Sep 17 00:00:00 2001
+From: Eric Prestat <eric.prestat@gmail.com>
+Date: Wed, 26 Jan 2022 18:24:10 +0000
+Subject: [PATCH] Add cmake option to disable building fftw
+
+---
+ projects/FFTW.cmake | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/projects/FFTW.cmake b/projects/FFTW.cmake
+index 1f56111..a93c216 100644
+--- a/projects/FFTW.cmake
++++ b/projects/FFTW.cmake
+@@ -1,3 +1,11 @@
++#--------------------------------------------------------------------------------------------------
++# Are we building FFTW (ON by default)
++#--------------------------------------------------------------------------------------------------
++OPTION(BUILD_FFTW "Build FFTW" ON)
++if("${BUILD_FFTW}" STREQUAL "OFF")
++  return()
++endif()
++
+ 
+ set(extProjectName "fftw")
+ message(STATUS "External Project: ${extProjectName}" )
+-- 
+2.30.2
+

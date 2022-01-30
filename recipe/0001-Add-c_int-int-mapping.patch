@@ -1,0 +1,26 @@
+From 3a57757db6f59d435bb11738b88e1f0f6cd0c24e Mon Sep 17 00:00:00 2001
+From: Eric Prestat <eric.prestat@gmail.com>
+Date: Fri, 28 Jan 2022 11:17:54 +0000
+Subject: [PATCH] Add 'c_int': 'int' mapping
+
+---
+ Source/pyEMsoft/kind_map | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/Source/pyEMsoft/kind_map b/Source/pyEMsoft/kind_map
+index a7a3f51..98f20b5 100644
+--- a/Source/pyEMsoft/kind_map
++++ b/Source/pyEMsoft/kind_map
+@@ -48,7 +48,8 @@
+ 				'800':'char',
+ 				'1024':'char',
+ 	                        'fnlen':'char' },
+-'integer': {'c_int32_t': 'int',
++'integer': {'c_int': 'int',
++         'c_int32_t': 'int',
+   			    'c_int64_t': 'long_long',
+   			    'irg': 'int',
+ 				'': 'int',
+-- 
+2.30.2
+

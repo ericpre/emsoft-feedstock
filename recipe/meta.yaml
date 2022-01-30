@@ -1,0 +1,90 @@
+{% set name = "emsoft" %}
+{% set version = "5.0.3.dev" %}
+{% set python_version = "3.9" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  - url: https://github.com/EMsoft-org/EMsoft/archive/refs/heads/develop.zip
+    folder: EMsoft
+    patches:
+      - 0001-Remove-use-of-json_create_object-json_print-json_add.patch
+      - 0001-Add-c_int-int-mapping.patch
+      - 0001-Move-objective_function-to-PSO.mod-to-fix-building-w.patch
+  - url: https://github.com/EMsoft-org/EMsoftSuperbuild/archive/refs/heads/develop.zip
+    folder: EMsoftSuperbuild
+    sha256: e37d55f916112890d01da8b0c556a9d74075a84eae6cd1de09234a5ad639d572
+    patches: 0001-Add-cmake-option-to-disable-building-fftw.patch
+
+build:
+  number: 0
+
+requirements:
+  build:
+    - {{ compiler('cxx') }}
+    - {{ compiler('fortran') }}
+  host:
+    - blas
+    - mkl
+    - fftw
+    - cmake
+    - make  # [unix]
+    - f90wrap
+    # OpenCL ICD
+    - ocl-icd  # [linux]
+    - khronos-opencl-icd-loader  # [win or osx]
+    - json-fortran
+    - eigen
+    - tbb
+    - python {{ python_version }}
+    # TODO: remove pinning when moving to conda-forge-pinning
+    - numpy 1.19
+  run:
+    # OpenCL ICD
+    - blas
+    - mkl
+    - fftw
+    - ocl-icd  # [linux]
+    - ocl-icd-system  # [linux]
+    - khronos-opencl-icd-loader  # [win or osx]
+    - ocl_icd_wrapper_apple      # [osx]
+    - json-fortran
+    # pyEMsoft dependencies
+    - python
+    - {{ pin_compatible('numpy') }}
+    - f90wrap
+    - h5py
+    - matplotlib-base
+
+test:
+  imports:
+    - EMsoft
+    - EMsoft.pyEMsoft
+    - EMsoft.pyEMsoftTools
+  commands:
+    - test -f ${PREFIX}/bin/EMEBSD
+    - test -f ${PREFIX}/bin/opencl/EMMC.cl
+    - test -f ${PREFIX}/lib/libEMOpenCLLib.so
+    - test -f ${PREFIX}/lib/libEMsoftHDFLib.so
+    - test -f ${PREFIX}/lib/libEMsoftLib.so
+    - test -f ${PREFIX}/lib/libEMsoftLib_C.a
+    - test -f ${PREFIX}/lib/libEMsoftLib_Cpp.a
+    - test -f ${PREFIX}/lib/libEMsoftWrapperLib.so
+    - test -f ${PREFIX}/include/EMsoftLib/EMsoftStringConstants.h
+    - test -f ${PREFIX}/include/EMsoftWrapperLib
+    - test -f ${PREFIX}/include/EMsoftDIwrappers.h
+    - test -f ${PREFIX}/include/EMsoftSEMwrappers.h
+
+about:
+  home: https://github.com/EMsoft-org/EMsoft
+  license: LGPL-3.0-or-later
+  license_file: EMsoft/License.txt
+  summary: 'This package contains a series of programs along with a library, mostly written in fortran-90 with some OpenCL bits, for the computation and visualization of scanning electron microscopy diffraction patterns, notably EBSD, ECP, TKD, and EKP. In addition, there are programs for TEM defect image contrast, CBED, PED, Laue x-ray diffraction, and a new series of programs for computational polarized light microscopy.'
+  doc_url: http://vbff.materials.cmu.edu/EMsoft/
+  dev_url: https://github.com/EMsoft-org/EMsoft
+
+extra:
+  recipe-maintainers:
+    - ericpre
