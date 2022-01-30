@@ -1,6 +1,5 @@
 {% set name = "emsoft" %}
 {% set version = "5.0.3.dev" %}
-{% set python_version = "3.9" %}
 
 package:
   name: {{ name|lower }}
@@ -19,7 +18,7 @@ source:
     patches: 0001-Add-cmake-option-to-disable-building-fftw.patch
 
 build:
-  number: 0
+  number: 1
 
 requirements:
   build:
@@ -38,9 +37,8 @@ requirements:
     - json-fortran
     - eigen
     - tbb
-    - python {{ python_version }}
-    # TODO: remove pinning when moving to conda-forge-pinning
-    - numpy 1.19
+    - python
+    - numpy
   run:
     # OpenCL ICD
     - blas
