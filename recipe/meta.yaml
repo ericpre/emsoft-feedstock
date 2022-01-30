@@ -19,6 +19,7 @@ source:
 
 build:
   number: 1
+  skip: True  # [win or osx]
 
 requirements:
   build:
