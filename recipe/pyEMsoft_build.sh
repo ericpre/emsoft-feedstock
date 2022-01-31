@@ -13,4 +13,4 @@ bash run_pyEMsoft.sh
 bash run_docs.sh
 
 cd pyEMsoft
-pip install .
+$PYTHON -m pip install . -vv
