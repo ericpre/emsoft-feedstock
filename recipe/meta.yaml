@@ -20,23 +20,24 @@ source:
 
 build:
   number: 1
-  skip: True  # [win or osx]
+  skip: True  # [osx]
 
 requirements:
   build:
     - {{ compiler('cxx') }}
     - {{ compiler('fortran') }}
+    - cmake
+    - make  # [not win]
+    - ninja  # [win]
   host:
     - blas
     - mkl-devel
     - fftw
-    - cmake
-    - make  # [unix]
     - f90wrap
     # OpenCL ICD
     - ocl-icd  # [linux]
     - khronos-opencl-icd-loader  # [win or osx]
-    - json-fortran
+    - json-fortran               # [unix]
     - eigen
     - tbb
     - python
@@ -55,7 +56,7 @@ requirements:
     - ocl-icd-system  # [linux]
     - khronos-opencl-icd-loader  # [win or osx]
     - ocl_icd_wrapper_apple      # [osx]
-    - json-fortran
+    - json-fortran               # [unix]
     # pyEMsoft dependencies
     - python
     - {{ pin_compatible('numpy') }}
