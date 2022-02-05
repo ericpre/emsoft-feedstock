@@ -51,6 +51,27 @@ Current build status
                   <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=linux&configuration=linux_64_numpy1.19python3.9.____cpython" alt="variant">
                 </a>
               </td>
+            </tr><tr>
+              <td>win_64_numpy1.18python3.7.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_numpy1.18python3.7.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_numpy1.18python3.8.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_numpy1.18python3.8.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_numpy1.19python3.9.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_numpy1.19python3.9.____cpython" alt="variant">
+                </a>
+              </td>
             </tr>
           </tbody>
         </table>
