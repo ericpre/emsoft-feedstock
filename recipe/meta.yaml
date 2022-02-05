@@ -33,7 +33,7 @@ requirements:
     - blas
     - mkl-devel
     - fftw
-    - f90wrap
+    - f90wrap                    # [unix]
     # OpenCL ICD
     - ocl-icd  # [linux]
     - khronos-opencl-icd-loader  # [win or osx]
@@ -58,11 +58,11 @@ requirements:
     - ocl_icd_wrapper_apple      # [osx]
     - json-fortran               # [unix]
     # pyEMsoft dependencies
-    - python
+    - python                     # [unix]
     - {{ pin_compatible('numpy') }}
-    - f90wrap
-    - h5py
-    - matplotlib-base
+    - f90wrap                    # [unix]
+    - h5py                       # [unix]
+    - matplotlib-base            # [unix]
 
 test:
   imports:
