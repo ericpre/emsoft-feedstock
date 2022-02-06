@@ -1,4 +1,7 @@
-@echo off 
+@echo off
+
+set FC=%BUILD_PREFIX%\Library\bin\flang.exe
+
 copy %RECIPE_DIR%\bld_EMsoftSDK.bat %SRC_DIR%
 copy %RECIPE_DIR%\bld_EMsoft.bat %SRC_DIR%
 copy %RECIPE_DIR%\bld_pyEMsoft.bat %SRC_DIR%

@@ -1,0 +1,26 @@
+From 22f5b7962bdd354a97ef599b882a2b3f72911710 Mon Sep 17 00:00:00 2001
+From: Eric Prestat <eric.prestat@gmail.com>
+Date: Sat, 5 Feb 2022 18:30:13 +0000
+Subject: [PATCH] Remove code raising error to detect MSVC version
+
+---
+ CMakeLists.txt | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e0e673a..773a561 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -137,9 +137,6 @@ elseif(WIN32)
+   if(MSVC12)
+     message(FATAL_ERROR "Visual Studio Version 12 2013 is NOT supported.")
+   endif(MSVC12)
+-  if( ${MSVC_VERSION} EQUAL "1900")
+-    message(FATAL_ERROR "Visual Studio Version 14 2015 is NOT supported.")
+-  endif()
+   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/projects/win32/WIN_EMsoft_SDK.cmake
+               ${EMsoft_SDK}/EMsoft_SDK.cmake COPYONLY )
+ else()
+-- 
+2.30.2.windows.1
+

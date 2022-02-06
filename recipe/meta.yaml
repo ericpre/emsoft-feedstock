@@ -13,10 +13,13 @@ source:
       - 0001-Add-c_int-int-mapping.patch
       - 0001-Move-objective_function-to-PSO.mod-to-fix-building-w.patch
       - 0001-Allow-longer-path-for-HDF5-installation.patch
+      
   - url: https://github.com/EMsoft-org/EMsoftSuperbuild/archive/refs/heads/develop.zip
     folder: EMsoftSuperbuild
     sha256: e37d55f916112890d01da8b0c556a9d74075a84eae6cd1de09234a5ad639d572
-    patches: 0001-Add-cmake-option-to-disable-building-fftw.patch
+    patches:
+      - 0001-Add-cmake-option-to-disable-building-fftw.patch
+      - 0001-Remove-code-raising-error-to-detect-MSVC-version.patch
 
 build:
   number: 1
@@ -24,11 +27,12 @@ build:
 
 requirements:
   build:
-    - {{ compiler('cxx') }}
-    - {{ compiler('fortran') }}
+    - {{ compiler('cxx') }}            # [not win]
+    - {{ compiler('fortran') }}        # [not win]
+    - flang >=11                       # [win]
+    - {{ compiler("cuda") }}           # [win]
     - cmake
-    - make  # [not win]
-    - ninja  # [win]
+    - make                             # [not win]
   host:
     - blas
     - mkl-devel
@@ -59,7 +63,7 @@ requirements:
     - json-fortran               # [unix]
     # pyEMsoft dependencies
     - python                     # [unix]
-    - {{ pin_compatible('numpy') }}
+    - {{ pin_compatible('numpy') }}  # [unix]
     - f90wrap                    # [unix]
     - h5py                       # [unix]
     - matplotlib-base            # [unix]

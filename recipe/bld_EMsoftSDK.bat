@@ -12,7 +12,7 @@ echo "***************************"
 mkdir Release
 cd Release
 
-cmake -G "NMake Makefiles" ^
+cmake -G "Make Makefiles" ^
   -DBUILD_SHARED_LIBS=OFF ^
   -DCMAKE_BUILD_TYPE=Release ^
   -DBUILD_NLOPT=OFF ^
