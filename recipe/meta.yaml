@@ -28,7 +28,7 @@ requirements:
     - {{ compiler('fortran') }}
   host:
     - blas
-    - mkl
+    - mkl-devel
     - fftw
     - cmake
     - make  # [unix]
