@@ -10,7 +10,9 @@ ls
 echo '*************************'
 
 bash run_pyEMsoft.sh
-bash run_docs.sh
 
-cd pyEMsoft
+cd $SRC_DIR/EMsoft/Release/pyEMsoft
 $PYTHON -m pip install . -vv
+
+cd $SRC_DIR/EMsoft/Release
+bash run_docs.sh

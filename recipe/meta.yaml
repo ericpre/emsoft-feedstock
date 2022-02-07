@@ -42,6 +42,10 @@ requirements:
     - python
     - pip
     - numpy
+    # pyEMsoft docs build
+    - sphinx
+    - sphinx_rtd_theme
+    - latexmk
   run:
     # OpenCL ICD
     - blas
