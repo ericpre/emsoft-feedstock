@@ -77,10 +77,10 @@ test:
     - test -f ${PREFIX}/lib/libEMsoftLib_C.a
     - test -f ${PREFIX}/lib/libEMsoftLib_Cpp.a
     - test -f ${PREFIX}/lib/libEMsoftWrapperLib.so
+    - test -f ${SP_DIR}/PyEMEBSDDI.so
     - test -f ${PREFIX}/include/EMsoftLib/EMsoftStringConstants.h
-    - test -f ${PREFIX}/include/EMsoftWrapperLib
-    - test -f ${PREFIX}/include/EMsoftDIwrappers.h
-    - test -f ${PREFIX}/include/EMsoftSEMwrappers.h
+    - test -f ${PREFIX}/include/EMsoftWrapperLib/EMsoftDIwrappers.h
+    - test -f ${PREFIX}/include/EMsoftWrapperLib/EMsoftSEMwrappers.h
 
 about:
   home: https://github.com/EMsoft-org/EMsoft
