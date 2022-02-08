@@ -19,7 +19,7 @@ source:
     patches: 0001-Add-cmake-option-to-disable-building-fftw.patch
 
 build:
-  number: 1
+  number: 2
   skip: True  # [win or osx]
 
 requirements:
@@ -27,8 +27,8 @@ requirements:
     - {{ compiler('cxx') }}
     - {{ compiler('fortran') }}
   host:
-    - blas
-    - mkl-devel
+    # blas should add suitable run export for mkl
+    - blas * mkl
     - fftw
     - cmake
     - make  # [unix]
@@ -47,15 +47,14 @@ requirements:
     - sphinx_rtd_theme
     - latexmk
   run:
-    # OpenCL ICD
-    - blas
-    - mkl
+    - libblas * *mkl
     - fftw
+    - json-fortran
+    # OpenCL ICD
     - ocl-icd  # [linux]
     - ocl-icd-system  # [linux]
     - khronos-opencl-icd-loader  # [win or osx]
     - ocl_icd_wrapper_apple      # [osx]
-    - json-fortran
     # pyEMsoft dependencies
     - python
     - {{ pin_compatible('numpy') }}
