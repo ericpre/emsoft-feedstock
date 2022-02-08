@@ -8,21 +8,36 @@ jobs:
     vmImage: ubuntu-latest
   strategy:
     matrix:
-      linux_64_numpy1.18python3.7.____cpython:
-        CONFIG: linux_64_numpy1.18python3.7.____cpython
+      linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.18python3.7.____cpython:
+        CONFIG: linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.18python3.7.____cpython
+        UPLOAD_PACKAGES: 'True'
+        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-cos7-cuda:10.2
+        SHORT_CONFIG: linux_64_cxx_compiler_version7fortr_hda113f5fb2
+      linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.18python3.8.____cpython:
+        CONFIG: linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.18python3.8.____cpython
+        UPLOAD_PACKAGES: 'True'
+        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-cos7-cuda:10.2
+        SHORT_CONFIG: linux_64_cxx_compiler_version7fortr_hd78daafb01
+      linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.19python3.9.____cpython:
+        CONFIG: linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.19python3.9.____cpython
+        UPLOAD_PACKAGES: 'True'
+        DOCKER_IMAGE: quay.io/condaforge/linux-anvil-cos7-cuda:10.2
+        SHORT_CONFIG: linux_64_cxx_compiler_version7fortr_hf53754c181
+      linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.18python3.7.____cpython:
+        CONFIG: linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.18python3.7.____cpython
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-cos7-x86_64
-        SHORT_CONFIG: linux_64_numpy1.18python3.7.____cpython
-      linux_64_numpy1.18python3.8.____cpython:
-        CONFIG: linux_64_numpy1.18python3.8.____cpython
+        SHORT_CONFIG: linux_64_cxx_compiler_version9fortr_hc9d8d9d8bf
+      linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.18python3.8.____cpython:
+        CONFIG: linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.18python3.8.____cpython
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-cos7-x86_64
-        SHORT_CONFIG: linux_64_numpy1.18python3.8.____cpython
-      linux_64_numpy1.19python3.9.____cpython:
-        CONFIG: linux_64_numpy1.19python3.9.____cpython
+        SHORT_CONFIG: linux_64_cxx_compiler_version9fortr_hee5810f4c5
+      linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.19python3.9.____cpython:
+        CONFIG: linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.19python3.9.____cpython
         UPLOAD_PACKAGES: 'True'
         DOCKER_IMAGE: quay.io/condaforge/linux-anvil-cos7-x86_64
-        SHORT_CONFIG: linux_64_numpy1.19python3.9.____cpython
+        SHORT_CONFIG: linux_64_cxx_compiler_version9fortr_hfd3640edfb
   timeoutInMinutes: 360
 
   steps:

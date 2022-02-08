@@ -31,31 +31,150 @@ Current build status
         <table>
           <thead><tr><th>Variant</th><th>Status</th></tr></thead>
           <tbody><tr>
-              <td>linux_64_numpy1.18python3.7.____cpython</td>
+              <td>linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.18python3.7.____cpython</td>
               <td>
                 <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
-                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=linux&configuration=linux_64_numpy1.18python3.7.____cpython" alt="variant">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=linux&configuration=linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.18python3.7.____cpython" alt="variant">
                 </a>
               </td>
             </tr><tr>
-              <td>linux_64_numpy1.18python3.8.____cpython</td>
+              <td>linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.18python3.8.____cpython</td>
               <td>
                 <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
-                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=linux&configuration=linux_64_numpy1.18python3.8.____cpython" alt="variant">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=linux&configuration=linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.18python3.8.____cpython" alt="variant">
                 </a>
               </td>
             </tr><tr>
-              <td>linux_64_numpy1.19python3.9.____cpython</td>
+              <td>linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.19python3.9.____cpython</td>
               <td>
                 <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
-                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=linux&configuration=linux_64_numpy1.19python3.9.____cpython" alt="variant">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=linux&configuration=linux_64_cxx_compiler_version7fortran_compiler_version7numpy1.19python3.9.____cpython" alt="variant">
                 </a>
               </td>
             </tr><tr>
-              <td>win_64</td>
+              <td>linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.18python3.7.____cpython</td>
               <td>
                 <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
-                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_" alt="variant">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=linux&configuration=linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.18python3.7.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.18python3.8.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=linux&configuration=linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.18python3.8.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.19python3.9.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=linux&configuration=linux_64_cxx_compiler_version9fortran_compiler_version9numpy1.19python3.9.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version10.2numpy1.18python3.7.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version10.2numpy1.18python3.7.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version10.2numpy1.18python3.8.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version10.2numpy1.18python3.8.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version10.2numpy1.19python3.9.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version10.2numpy1.19python3.9.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version11.0numpy1.18python3.7.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version11.0numpy1.18python3.7.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version11.0numpy1.18python3.8.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version11.0numpy1.18python3.8.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version11.0numpy1.19python3.9.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version11.0numpy1.19python3.9.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version11.1numpy1.18python3.7.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version11.1numpy1.18python3.7.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version11.1numpy1.18python3.8.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version11.1numpy1.18python3.8.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version11.1numpy1.19python3.9.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version11.1numpy1.19python3.9.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version11.2numpy1.18python3.7.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version11.2numpy1.18python3.7.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version11.2numpy1.18python3.8.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version11.2numpy1.18python3.8.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_version11.2numpy1.19python3.9.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_version11.2numpy1.19python3.9.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_versionNonenumpy1.18python3.7.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_versionNonenumpy1.18python3.7.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_versionNonenumpy1.18python3.8.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_versionNonenumpy1.18python3.8.____cpython" alt="variant">
+                </a>
+              </td>
+            </tr><tr>
+              <td>win_64_cuda_compiler_versionNonenumpy1.19python3.9.____cpython</td>
+              <td>
+                <a href="https://dev.azure.com/ericpre/feedstock-builds/_build/latest?definitionId=&branchName=master">
+                  <img src="https://dev.azure.com/ericpre/feedstock-builds/_apis/build/status/emsoft-feedstock?branchName=master&jobName=win&configuration=win_64_cuda_compiler_versionNonenumpy1.19python3.9.____cpython" alt="variant">
                 </a>
               </td>
             </tr>
